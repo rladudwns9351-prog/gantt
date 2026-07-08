@@ -1220,6 +1220,7 @@ const GCAL_CFG_KEY="gcalSyncCfg_v1";
 const GCAL_SCOPE="https://www.googleapis.com/auth/calendar";
 const GCAL_CAL_NAME="간트차트";
 const GBASE="https://www.googleapis.com/calendar/v3";
+const GCAL_ACCOUNT_HINT="rladudwns9351@gmail.com";   // 다계정 로그인 시 이 계정으로 고정(무음 토큰 갱신)
 const PRIO_GCAL={high:"11",normal:"5",low:"10"};      // Tomato / Banana / Basil
 const GCAL2PRIO={"11":"high","5":"normal","10":"low"};
 function loadGcalCfg(){try{const r=localStorage.getItem(GCAL_CFG_KEY);if(r){const c=JSON.parse(r);if(c&&c.clientId)return c;}}catch(e){}return null;}
@@ -1242,8 +1243,9 @@ function gcalErr(e){
 function initTokenClientIfNeeded(){
   if(gTokenClient)return true;
   if(!(window.google&&google.accounts&&google.accounts.oauth2)||!gcalConfigured())return false;
+  const _hint=(gcalCfg&&gcalCfg.account)||GCAL_ACCOUNT_HINT;
   gTokenClient=google.accounts.oauth2.initTokenClient({
-    client_id:gcalCfg.clientId, scope:GCAL_SCOPE,
+    client_id:gcalCfg.clientId, scope:GCAL_SCOPE, hint:_hint, login_hint:_hint,
     callback:(resp)=>{
       if(resp&&resp.error){if(gTokenPending){gTokenPending.reject(new Error(resp.error));gTokenPending=null;}return;}
       gToken=resp.access_token; gTokenExp=Date.now()+((resp.expires_in||3600)*1000)-60000;
@@ -1257,7 +1259,8 @@ function requestToken(interactive){
   return new Promise((resolve,reject)=>{
     if(!initTokenClientIfNeeded()){reject(new Error("GIS 로드 안됨"));return;}
     gTokenPending={resolve,reject};
-    try{gTokenClient.requestAccessToken({prompt:interactive?"consent":""});}
+    const _hint=(gcalCfg&&gcalCfg.account)||GCAL_ACCOUNT_HINT;
+    try{gTokenClient.requestAccessToken({prompt:interactive?"consent":"", hint:_hint, login_hint:_hint});}
     catch(e){gTokenPending=null;reject(e);}
   });
 }
