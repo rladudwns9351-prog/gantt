@@ -250,6 +250,74 @@
     .title-block h1{font-size:20px}
     .kpi .n{font-size:20px}
   }
+
+  /* ===== 폴더(접기/펴기) + 계약건 보드 ===== */
+  .folder{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+  .folder.todo{border-left:4px solid var(--accent)}
+  .folder-head{display:flex;align-items:center;gap:10px;padding:13px 16px;cursor:pointer;user-select:none}
+  .folder-head:hover{background:#faf6ee}
+  .fh-chev{font-size:12px;color:var(--muted);transition:transform .15s;flex:none}
+  .folder:not(.collapsed) .fh-chev{transform:rotate(90deg)}
+  .fh-name{font-size:14.5px;font-weight:800}
+  .fh-cnt{font-size:12px;font-weight:700;color:#fff;background:var(--accent);padding:2px 9px;border-radius:20px;margin-left:auto}
+  .board-folder .fh-cnt{background:var(--muted)}
+  .folder-head .tdate{margin-left:auto}
+  .folder-head .tdate ~ .fh-cnt{margin-left:10px}
+  .fh-add{border:1px solid var(--line-strong);background:#fff;color:var(--muted);font-weight:700;font-size:12px;padding:5px 11px;border-radius:9px;cursor:pointer;font-family:inherit;flex:none;margin-left:10px}
+  .fh-add:hover{border-color:var(--accent);color:var(--accent)}
+  .folder-body{padding:0 14px 14px}
+  .folder.collapsed .folder-body{display:none}
+
+  .card-list{display:flex;flex-direction:column;gap:8px;min-height:8px}
+  .card{display:flex;gap:10px;background:var(--paper);border:1px solid var(--line);border-left:5px solid var(--pc,var(--line-strong));
+    border-radius:11px;padding:10px 13px;cursor:grab;touch-action:none;transition:.12s}
+  .card:hover{border-color:var(--accent)}
+  .card:active{cursor:grabbing}
+  .card.dragging{opacity:.35}
+  .card-dot{width:8px;height:8px;border-radius:50%;background:var(--pc,var(--line-strong));flex:none;margin-top:5px}
+  .card-main{min-width:0;flex:1}
+  .card-title{font-weight:700;font-size:13.5px;word-break:break-word}
+  .card-memo{font-size:12px;color:var(--muted);margin-top:5px;white-space:pre-wrap;word-break:break-word;line-height:1.55}
+  .card-empty{color:var(--muted);font-size:12.5px;padding:12px 2px;text-align:center;border:1px dashed var(--line-strong);border-radius:10px}
+
+  #dragOverlay{position:fixed;inset:0;z-index:60;display:none;pointer-events:none;background:rgba(33,30,27,.38);
+    backdrop-filter:blur(1px);align-items:center;justify-content:center;padding:24px}
+  #dragOverlay.show{display:flex}
+  .drop-zones{display:grid;grid-template-columns:1fr 1fr;gap:14px;width:100%;max-width:440px}
+  .drop-zone{background:var(--panel);border:2px dashed var(--line-strong);border-radius:16px;padding:26px 12px;text-align:center;
+    font-weight:800;font-size:15px;color:var(--muted);box-shadow:var(--shadow);transition:.1s}
+  .drop-zone .z-sub{display:block;font-size:11px;font-weight:600;margin-top:6px;opacity:.65}
+  .drop-zone.hot{border-color:var(--accent);border-style:solid;background:var(--accent-soft);color:var(--accent);transform:scale(1.05)}
+  .drag-ghost{position:fixed;z-index:70;pointer-events:none;background:var(--panel);border:1px solid var(--accent);
+    border-left:5px solid var(--pc,var(--accent));border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;
+    box-shadow:0 12px 30px -8px rgba(0,0,0,.4);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  #cardMask textarea{width:100%;border:1px solid var(--line-strong);border-radius:11px;padding:11px 13px;font-size:14px;
+    font-family:inherit;background:#fff;color:var(--ink);min-height:150px;resize:vertical;line-height:1.55}
+  #cardMask textarea:focus{outline:none;border-color:var(--accent)}
+  .cseg{display:flex;gap:6px;flex-wrap:wrap}
+  .cseg .pbtn{flex:1;min-width:66px;padding:9px 4px}
+
+  /* ===== 마감 지난 할 일(최상단 경고) ===== */
+  .overdue-top{border:1.5px solid var(--over);border-left:5px solid var(--over);background:var(--over-soft);
+    border-radius:16px;box-shadow:var(--shadow);margin-bottom:12px;padding:14px 16px}
+  .ot-head{display:flex;align-items:center;gap:9px;font-size:14.5px;font-weight:800;color:var(--over);margin-bottom:11px}
+  .ot-head .ot-cnt{font-size:12px;font-weight:700;color:#fff;background:var(--over);padding:2px 9px;border-radius:20px}
+  .ot-list{display:flex;flex-direction:column;gap:8px}
+  .ot-item{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #f1c9c3;border-radius:11px;padding:10px 13px;flex-wrap:wrap}
+  .ot-item .pdot{width:7px;height:7px;border-radius:50%;flex:none}
+  .ot-item .swatch{width:10px;height:10px;border-radius:3px;flex:none}
+  .ot-item .nm{font-weight:700;font-size:13.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ot-item .ot-late{font-family:'JetBrains Mono',monospace;font-size:11.5px;font-weight:700;color:var(--over);white-space:nowrap}
+  .ot-item .ot-acts{margin-left:auto;display:flex;gap:6px;flex:none}
+  .ot-btn{border:1px solid var(--line-strong);background:#fff;font-family:inherit;font-weight:700;font-size:12px;padding:6px 10px;border-radius:9px;cursor:pointer;transition:.13s;white-space:nowrap}
+  .ot-btn.extend{border-color:var(--accent);color:var(--accent)}
+  .ot-btn.extend:hover{background:var(--accent);color:#fff}
+  .ot-btn.done{color:var(--done);border-color:#bfe0c8}
+  .ot-btn.done:hover{background:var(--done);color:#fff;border-color:var(--done)}
+  .ot-btn.del{color:var(--over);border-color:#f1c9c3}
+  .ot-btn.del:hover{background:var(--over);color:#fff;border-color:var(--over)}
+  @media(max-width:680px){.ot-item .nm{flex:1 1 100%}.ot-item .ot-acts{margin-left:0}}
 </style>
 </head>
 <body>
@@ -282,14 +350,57 @@
     <button class="btn primary" id="addBtn">+ 할 일 추가</button>
   </div>
 
-  <section class="today-panel" id="todayPanel">
-    <div class="th">
-      <h2>📌 오늘 할 일</h2>
-      <span class="tdate mono" id="todayDate">—</span>
-      <span class="cnt" id="todayCnt">0</span>
-    </div>
-    <div class="today-grid" id="todayGrid"></div>
+  <section class="overdue-top" id="overTop" style="display:none">
+    <div class="ot-head">⚠ 마감 지난 할 일 — 처리 필요 <span class="ot-cnt" id="otCnt">0</span></div>
+    <div class="ot-list" id="otList"></div>
   </section>
+
+  <section class="folder todo" id="todoFolder">
+    <div class="folder-head" data-fold="todo">
+      <span class="fh-chev">▸</span>
+      <span class="fh-name">📌 오늘 할 일</span>
+      <span class="tdate mono" id="todayDate">—</span>
+      <span class="fh-cnt" id="todayCnt">0</span>
+    </div>
+    <div class="folder-body">
+      <div class="today-grid" id="todayGrid"></div>
+    </div>
+  </section>
+
+  <div id="boardWrap">
+    <section class="folder board-folder" data-folder="req">
+      <div class="folder-head" data-fold="req">
+        <span class="fh-chev">▸</span><span class="fh-name">📦 재고요청</span>
+        <span class="fh-cnt" data-cnt="req">0</span>
+        <button class="fh-add" data-add="req">+ 카드</button>
+      </div>
+      <div class="folder-body"><div class="card-list" data-list="req"></div></div>
+    </section>
+    <section class="folder board-folder" data-folder="preempt">
+      <div class="folder-head" data-fold="preempt">
+        <span class="fh-chev">▸</span><span class="fh-name">🔒 선점완료</span>
+        <span class="fh-cnt" data-cnt="preempt">0</span>
+        <button class="fh-add" data-add="preempt">+ 카드</button>
+      </div>
+      <div class="folder-body"><div class="card-list" data-list="preempt"></div></div>
+    </section>
+    <section class="folder board-folder" data-folder="progress">
+      <div class="folder-head" data-fold="progress">
+        <span class="fh-chev">▸</span><span class="fh-name">🚗 진행건</span>
+        <span class="fh-cnt" data-cnt="progress">0</span>
+        <button class="fh-add" data-add="progress">+ 카드</button>
+      </div>
+      <div class="folder-body"><div class="card-list" data-list="progress"></div></div>
+    </section>
+    <section class="folder board-folder" data-folder="done">
+      <div class="folder-head" data-fold="done">
+        <span class="fh-chev">▸</span><span class="fh-name">🏁 완료건</span>
+        <span class="fh-cnt" data-cnt="done">0</span>
+        <button class="fh-add" data-add="done">+ 카드</button>
+      </div>
+      <div class="folder-body"><div class="card-list" data-list="done"></div></div>
+    </section>
+  </div>
 
   <div class="dash">
     <div class="kpi prog"><div class="n" id="kProg">0</div><div class="l">진행중</div></div>
@@ -494,6 +605,51 @@ create policy "anon_all" on schedule_sync
   </div>
 </div>
 
+<div class="mask" id="cardMask">
+  <div class="modal">
+    <h3 id="cardMTitle">카드 추가</h3>
+    <div class="fld">
+      <label>제목</label>
+      <input type="text" id="cName" placeholder="예: 홍길동 / 스타리아 / 남양점" autocomplete="off">
+    </div>
+    <div class="fld">
+      <label>중요도</label>
+      <div class="pseg" id="cPrioSeg">
+        <button class="pbtn" data-p="high"><span class="pdot" style="background:#e11d1d"></span>높음</button>
+        <button class="pbtn sel" data-p="normal"><span class="pdot" style="background:#f5b301"></span>보통</button>
+        <button class="pbtn" data-p="low"><span class="pdot" style="background:#1f9d4d"></span>낮음</button>
+      </div>
+    </div>
+    <div class="fld">
+      <label>폴더</label>
+      <div class="cseg" id="cFolderSeg">
+        <button class="pbtn" data-f="req">📦 재고요청</button>
+        <button class="pbtn" data-f="preempt">🔒 선점완료</button>
+        <button class="pbtn" data-f="progress">🚗 진행건</button>
+        <button class="pbtn" data-f="done">🏁 완료건</button>
+      </div>
+    </div>
+    <div class="fld">
+      <label>메모 (길게 입력 가능)</label>
+      <textarea id="cMemo" placeholder="계약 진행 내용·특이사항을 자유롭게 기록하세요."></textarea>
+    </div>
+    <div class="modal-acts">
+      <button class="btn del" id="cDel" style="display:none">삭제</button>
+      <button class="btn ghost" id="cCancel">취소</button>
+      <button class="btn primary" id="cSave">저장</button>
+    </div>
+  </div>
+</div>
+
+<div id="dragOverlay">
+  <div class="drop-zones">
+    <div class="drop-zone" data-zone="req">📦 재고요청<span class="z-sub">여기에 놓기</span></div>
+    <div class="drop-zone" data-zone="preempt">🔒 선점완료<span class="z-sub">여기에 놓기</span></div>
+    <div class="drop-zone" data-zone="progress">🚗 진행건<span class="z-sub">여기에 놓기</span></div>
+    <div class="drop-zone" data-zone="done">🏁 완료건<span class="z-sub">여기에 놓기</span></div>
+  </div>
+</div>
+
 <script>
 const COLORS=["#4f86c6","#5aa469","#e0a458","#c2607d","#7b6cb0","#4ba3a3","#d2522f","#6b7280"];
 const PRIO={high:"#e11d1d",normal:"#f5b301",low:"#1f9d4d"};
@@ -534,8 +690,10 @@ function load(){
   try{const r=localStorage.getItem(STORE_KEY);if(r){const d=JSON.parse(r);
     if(!d.updatedAt)d.updatedAt=Date.now();   // 기존 데이터는 최신으로 간주(클라우드에 업로드되도록)
     if(!d.recurring)d.recurring=[];           // 반복 일정 배열(기존 데이터 호환)
+    if(!d.board||typeof d.board!=="object")d.board={cards:[]};   // 계약건 보드(기존 데이터 호환)
+    if(!Array.isArray(d.board.cards))d.board.cards=[];
     return d;}}catch(e){}
-  return {months:{},recurring:[],updatedAt:0};
+  return {months:{},recurring:[],board:{cards:[]},updatedAt:0};
 }
 function save(){
   state.updatedAt=Date.now();
@@ -740,6 +898,8 @@ function render(){
   renderGantt(b);
   renderLists(b);
   renderToday();
+  renderOverTop();
+  renderBoard();
   // dashboard
   let p=0,o=0,d=0;
   allRealTasks().forEach(t=>{const c=classify(t);if(c==='done')d++;else if(c==='overdue')o++;else p++;});
@@ -925,7 +1085,8 @@ function renderLists(b){
   const over=items.filter(t=>classify(t)==='overdue');
   const done=all.filter(t=>t.done).filter(matchSearch);
   // overdue
-  document.getElementById("overSec").style.display=over.length?"":"none";
+  // overdue → 최상단 경고 패널(renderOverTop)로 이동 표시. 하단 지연 섹션은 중복 방지 위해 숨김.
+  document.getElementById("overSec").style.display="none";
   document.getElementById("overCnt").textContent=over.length;
   document.getElementById("overList").innerHTML=over.map(t=>{
     const late=-dayDiff(today0(),pd(t.end));
@@ -1506,7 +1667,209 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden&&gcalConfi
 window.addEventListener("focus",()=>{if(gcalConfigured()&&!gcalBusy)gcalSync(false);});
 setInterval(()=>{if(gcalConfigured()&&!document.hidden&&!gcalBusy)gcalSync(false);},30000);
 
-render();applyView();initSync();initGcal();
+/* ==================== 마감 지난 할 일(최상단 처리 패널) ==================== */
+function renderOverTop(){
+  const over=allRealTasks().filter(t=>classify(t)==='overdue'&&matchSearch(t))
+    .sort((a,b)=>pd(a.end)-pd(b.end));   // 가장 오래 지난 건이 위로
+  const sec=document.getElementById("overTop");
+  const list=document.getElementById("otList");
+  document.getElementById("otCnt").textContent=over.length;
+  if(!over.length){sec.style.display="none";list.innerHTML="";return;}
+  sec.style.display="";
+  list.innerHTML=over.map(t=>{
+    const late=-dayDiff(today0(),pd(t.end));
+    return `<div class="ot-item">
+      <span class="pdot" style="background:${PRIO[t.priority]}"></span>
+      <span class="swatch" style="background:${prioColor(t)}"></span>
+      <span class="nm">${escapeHtml(t.name)}</span>
+      <span class="ot-late">D+${late} · ${late}일 지남</span>
+      <span class="ot-acts">
+        <button class="ot-btn extend" data-act="extend" data-id="${t.id}">📅 연장</button>
+        <button class="ot-btn done" data-act="complete" data-id="${t.id}">✓ 완료</button>
+        <button class="ot-btn del" data-act="del" data-id="${t.id}">🗑 삭제</button>
+      </span></div>`;
+  }).join("");
+}
+function overTopClick(e){
+  const btn=e.target.closest("[data-act]");if(!btn)return;
+  const id=btn.dataset.id,act=btn.dataset.act,r=findTask(id);if(!r)return;const t=r.t;
+  if(act==="extend"){openEdit(id,true);}   // 편집 모달에서 날짜 재지정(연장)
+  else if(act==="complete"){t.done=true;t.doneAt=fmtMD(today0());t.updatedAt=Date.now();save();render();}
+  else if(act==="del"){
+    if(!confirm("이 할 일을 삭제할까요?"))return;
+    if(t.gcalId&&typeof queueGcalDelete==="function")queueGcalDelete(t.gcalId);
+    const b=state.months[r.k];b.tasks=b.tasks.filter(x=>x.id!==id);save();render();
+  }
+}
+document.getElementById("otList").addEventListener("click",overTopClick);
+
+/* ==================== 계약건 폴더 보드 ==================== */
+const FOLDERS=[
+  {key:"req",name:"📦 재고요청"},
+  {key:"preempt",name:"🔒 선점완료"},
+  {key:"progress",name:"🚗 진행건"},
+  {key:"done",name:"🏁 완료건"}
+];
+const BORD={high:0,normal:1,low:2};   // 중요도 정렬(높음이 위)
+function ensureBoard(){
+  if(!state.board||typeof state.board!=="object")state.board={cards:[]};
+  if(!Array.isArray(state.board.cards))state.board.cards=[];
+}
+function saveBoard(){                  // 로컬 저장 + 클라우드 동기화(구글 캘린더는 건드리지 않음)
+  ensureBoard();
+  state.updatedAt=Date.now();
+  localStorage.setItem(STORE_KEY,JSON.stringify(state));
+  scheduleCloudPush();
+}
+function cardHTML(c){
+  const col=PRIO[c.prio]||PRIO.normal;
+  const memo=c.memo?`<div class="card-memo">${escapeHtml(c.memo)}</div>`:"";
+  return `<div class="card" data-id="${c.id}" style="--pc:${col}">
+    <span class="card-dot"></span>
+    <div class="card-main"><div class="card-title">${escapeHtml(c.title||"제목 없음")}</div>${memo}</div>
+  </div>`;
+}
+function renderBoard(){
+  ensureBoard();
+  FOLDERS.forEach(f=>{
+    const cards=state.board.cards.filter(c=>c.folder===f.key)
+      .sort((a,b)=>(BORD[a.prio]??1)-(BORD[b.prio]??1)||(b.updatedAt||0)-(a.updatedAt||0));
+    const cnt=document.querySelector('[data-cnt="'+f.key+'"]');if(cnt)cnt.textContent=cards.length;
+    const list=document.querySelector('[data-list="'+f.key+'"]');if(!list)return;
+    list.innerHTML=cards.length?cards.map(cardHTML).join("")
+      :'<div class="card-empty">카드를 추가하거나 다른 폴더에서 끌어다 놓으세요.</div>';
+  });
+}
+
+/* 접기/펴기 상태(이 기기에만 저장 · 동기화 안 함) */
+const FOLD_KEY="boardFold_v1";
+let foldState=(function(){try{const r=localStorage.getItem(FOLD_KEY);if(r)return JSON.parse(r)||{};}catch(e){}return {};})();
+function saveFold(){try{localStorage.setItem(FOLD_KEY,JSON.stringify(foldState));}catch(e){}}
+function applyFold(){
+  document.querySelectorAll(".folder .folder-head").forEach(h=>{
+    const sec=h.closest(".folder");if(!sec)return;
+    sec.classList.toggle("collapsed",!!foldState[h.dataset.fold]);
+  });
+}
+
+/* 카드 모달 */
+const cardMask=document.getElementById("cardMask");
+let cardEditing=null,cardPrio="normal",cardFolder="req";
+function selCseg(seg,attr,val){document.querySelectorAll("#"+seg+" .pbtn").forEach(x=>x.classList.toggle("sel",x.dataset[attr]===val));}
+function openCardAdd(folder){
+  cardEditing=null;cardPrio="normal";cardFolder=folder||"req";
+  document.getElementById("cardMTitle").textContent="카드 추가";
+  document.getElementById("cName").value="";
+  document.getElementById("cMemo").value="";
+  document.getElementById("cDel").style.display="none";
+  selCseg("cPrioSeg","p",cardPrio);selCseg("cFolderSeg","f",cardFolder);
+  cardMask.classList.add("show");
+  setTimeout(()=>document.getElementById("cName").focus(),50);
+}
+function openCardEdit(id){
+  ensureBoard();const c=state.board.cards.find(x=>x.id===id);if(!c)return;
+  cardEditing=id;cardPrio=c.prio||"normal";cardFolder=c.folder||"req";
+  document.getElementById("cardMTitle").textContent="카드 편집";
+  document.getElementById("cName").value=c.title||"";
+  document.getElementById("cMemo").value=c.memo||"";
+  document.getElementById("cDel").style.display="";
+  selCseg("cPrioSeg","p",cardPrio);selCseg("cFolderSeg","f",cardFolder);
+  cardMask.classList.add("show");
+  setTimeout(()=>document.getElementById("cName").focus(),50);
+}
+function closeCard(){cardMask.classList.remove("show");}
+function saveCard(){
+  ensureBoard();
+  const title=document.getElementById("cName").value.trim()||"제목 없음";
+  const memo=document.getElementById("cMemo").value;
+  if(cardEditing){
+    const c=state.board.cards.find(x=>x.id===cardEditing);
+    if(c){c.title=title;c.memo=memo;c.prio=cardPrio;c.folder=cardFolder;c.updatedAt=Date.now();}
+  }else{
+    state.board.cards.push({id:uid(),title,memo,prio:cardPrio,folder:cardFolder,updatedAt:Date.now()});
+  }
+  saveBoard();renderBoard();closeCard();
+}
+function delCard(){
+  if(!cardEditing)return;if(!confirm("이 카드를 삭제할까요?"))return;
+  ensureBoard();state.board.cards=state.board.cards.filter(x=>x.id!==cardEditing);
+  saveBoard();renderBoard();closeCard();
+}
+document.getElementById("cCancel").onclick=closeCard;
+document.getElementById("cSave").onclick=saveCard;
+document.getElementById("cDel").onclick=delCard;
+document.getElementById("cPrioSeg").addEventListener("click",e=>{const b=e.target.closest(".pbtn");if(!b)return;cardPrio=b.dataset.p;selCseg("cPrioSeg","p",cardPrio);});
+document.getElementById("cFolderSeg").addEventListener("click",e=>{const b=e.target.closest(".pbtn");if(!b)return;cardFolder=b.dataset.f;selCseg("cFolderSeg","f",cardFolder);});
+document.getElementById("cName").addEventListener("keydown",e=>{if(e.key==="Enter")saveCard();});
+cardMask.addEventListener("click",e=>{if(e.target===cardMask)closeCard();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&cardMask.classList.contains("show"))closeCard();});
+
+/* 폴더 헤더 접기/펴기 + 카드 추가 */
+const boardWrap=document.getElementById("boardWrap");
+document.getElementById("todoFolder").addEventListener("click",e=>{
+  const h=e.target.closest(".folder-head");if(!h)return;
+  foldState[h.dataset.fold]=!foldState[h.dataset.fold];saveFold();applyFold();
+});
+boardWrap.addEventListener("click",e=>{
+  const add=e.target.closest(".fh-add");
+  if(add){e.stopPropagation();openCardAdd(add.dataset.add);return;}
+  const h=e.target.closest(".folder-head");
+  if(h){foldState[h.dataset.fold]=!foldState[h.dataset.fold];saveFold();applyFold();}
+});
+
+/* 드래그로 폴더 이동(마우스·터치 공용) — 드래그 시작 시 4개 폴더만 화면에 표시 */
+const dragOverlay=document.getElementById("dragOverlay");
+let cardDrag=null;
+function positionGhost(e){if(cardDrag&&cardDrag.ghost){cardDrag.ghost.style.left=(e.clientX+14)+"px";cardDrag.ghost.style.top=(e.clientY+14)+"px";}}
+function startCardDrag(e){
+  cardDrag.active=true;cardDrag.card.classList.add("dragging");
+  const col=(getComputedStyle(cardDrag.card).getPropertyValue("--pc")||"").trim()||"var(--accent)";
+  const g=document.createElement("div");g.className="drag-ghost";g.style.setProperty("--pc",col);
+  const tEl=cardDrag.card.querySelector(".card-title");g.textContent=tEl?tEl.textContent:"카드";
+  document.body.appendChild(g);cardDrag.ghost=g;
+  dragOverlay.classList.add("show");positionGhost(e);
+}
+function hitZone(e){
+  let hit=null;
+  document.querySelectorAll("#dragOverlay .drop-zone").forEach(z=>{
+    const r=z.getBoundingClientRect();
+    const inside=e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;
+    z.classList.toggle("hot",inside);if(inside)hit=z.dataset.zone;
+  });
+  return hit;
+}
+function cleanupDrag(){
+  if(cardDrag){if(cardDrag.ghost)cardDrag.ghost.remove();if(cardDrag.card)cardDrag.card.classList.remove("dragging");}
+  dragOverlay.classList.remove("show");
+  document.querySelectorAll("#dragOverlay .drop-zone.hot").forEach(z=>z.classList.remove("hot"));
+  cardDrag=null;
+}
+boardWrap.addEventListener("pointerdown",e=>{
+  const card=e.target.closest(".card");if(!card)return;
+  if(e.button!==undefined&&e.button!==0)return;
+  cardDrag={id:card.dataset.id,card,x0:e.clientX,y0:e.clientY,active:false,ghost:null,target:null,pid:e.pointerId};
+  try{card.setPointerCapture(e.pointerId);}catch(_){}
+});
+boardWrap.addEventListener("pointermove",e=>{
+  if(!cardDrag||e.pointerId!==cardDrag.pid)return;
+  if(!cardDrag.active){
+    if(Math.hypot(e.clientX-cardDrag.x0,e.clientY-cardDrag.y0)<8)return;
+    startCardDrag(e);
+  }
+  positionGhost(e);cardDrag.target=hitZone(e);e.preventDefault();
+});
+boardWrap.addEventListener("pointerup",e=>{
+  if(!cardDrag||e.pointerId!==cardDrag.pid)return;
+  try{cardDrag.card.releasePointerCapture(e.pointerId);}catch(_){}
+  if(!cardDrag.active){const id=cardDrag.id;cardDrag=null;openCardEdit(id);return;}
+  const id=cardDrag.id,target=cardDrag.target;
+  cleanupDrag();
+  if(target){const c=state.board.cards.find(x=>x.id===id);if(c&&c.folder!==target){c.folder=target;c.updatedAt=Date.now();saveBoard();}}
+  renderBoard();
+});
+boardWrap.addEventListener("pointercancel",e=>{if(cardDrag&&e.pointerId===cardDrag.pid){cleanupDrag();renderBoard();}});
+
+render();applyView();applyFold();initSync();initGcal();
 </script>
 </body>
 </html>
