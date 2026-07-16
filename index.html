@@ -400,6 +400,14 @@
       </div>
       <div class="folder-body"><div class="card-list" data-list="done"></div></div>
     </section>
+    <section class="folder board-folder" data-folder="deliver">
+      <div class="folder-head" data-fold="deliver">
+        <span class="fh-chev">▸</span><span class="fh-name">🚚 인도완료</span>
+        <span class="fh-cnt" data-cnt="deliver">0</span>
+        <button class="fh-add" data-add="deliver">+ 카드</button>
+      </div>
+      <div class="folder-body"><div class="card-list" data-list="deliver"></div></div>
+    </section>
   </div>
 
   <div class="dash">
@@ -627,6 +635,7 @@ create policy "anon_all" on schedule_sync
         <button class="pbtn" data-f="preempt">🔒 선점완료</button>
         <button class="pbtn" data-f="progress">🚗 진행건</button>
         <button class="pbtn" data-f="done">🏁 완료건</button>
+        <button class="pbtn" data-f="deliver">🚚 인도완료</button>
       </div>
     </div>
     <div class="fld">
@@ -647,6 +656,7 @@ create policy "anon_all" on schedule_sync
     <div class="drop-zone" data-zone="preempt">🔒 선점완료<span class="z-sub">여기에 놓기</span></div>
     <div class="drop-zone" data-zone="progress">🚗 진행건<span class="z-sub">여기에 놓기</span></div>
     <div class="drop-zone" data-zone="done">🏁 완료건<span class="z-sub">여기에 놓기</span></div>
+    <div class="drop-zone" data-zone="deliver">🚚 인도완료<span class="z-sub">여기에 놓기</span></div>
   </div>
 </div>
 
@@ -1708,7 +1718,8 @@ const FOLDERS=[
   {key:"req",name:"📦 재고요청"},
   {key:"preempt",name:"🔒 선점완료"},
   {key:"progress",name:"🚗 진행건"},
-  {key:"done",name:"🏁 완료건"}
+  {key:"done",name:"🏁 완료건"},
+  {key:"deliver",name:"🚚 인도완료"}
 ];
 const BORD={high:0,normal:1,low:2};   // 중요도 정렬(높음이 위)
 function ensureBoard(){
