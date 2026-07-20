@@ -1291,7 +1291,7 @@ document.getElementById("mSave").onclick=saveForm;
 document.getElementById("mCancel").onclick=closeModal;
 document.getElementById("mDel").onclick=delCurrent;
 document.getElementById("mComplete").onclick=completeFromModal;
-document.getElementById("fStart").addEventListener("change",updatePreview);
+document.getElementById("fStart").addEventListener("change",function(){var sEl=document.getElementById("fStart"),eEl=document.getElementById("fEnd");if(sEl.value&&(!eEl.value||eEl.value<sEl.value))eEl.value=sEl.value;updatePreview();});
 document.getElementById("fEnd").addEventListener("change",updatePreview);
 document.getElementById("prioSeg").addEventListener("click",e=>{const b=e.target.closest(".pbtn");if(!b)return;pickedPrio=b.dataset.p;buildPrio();});
 document.getElementById("weekChips").addEventListener("click",e=>{const c=e.target.closest(".chip");if(!c)return;
