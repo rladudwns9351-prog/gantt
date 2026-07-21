@@ -2020,6 +2020,16 @@ boardWrap.addEventListener("pointercancel",e=>{if(cardDrag&&e.pointerId===cardDr
   document.getElementById("frClose").onclick=()=>{input.value="";clearAll();bar.classList.add("fr-hidden");launch.classList.remove("fr-hidden");};
   launch.onclick=()=>{launch.classList.add("fr-hidden");bar.classList.remove("fr-hidden");setTimeout(()=>input.focus(),40);};
 
+  /* '/' 단축키: 다른 입력칸에 커서가 없을 때만 → 키워드 검색 열고 포커스 (브라우저 Ctrl+F는 그대로 유지) */
+  document.addEventListener("keydown",e=>{
+    if(e.key!=="/"||e.ctrlKey||e.metaKey||e.altKey)return;
+    const a=document.activeElement,tag=a&&a.tagName;
+    if(tag==="INPUT"||tag==="TEXTAREA"||(a&&a.isContentEditable))return;
+    e.preventDefault();
+    if(bar.classList.contains("fr-hidden")){launch.classList.add("fr-hidden");bar.classList.remove("fr-hidden");}
+    input.focus();input.select();
+  });
+
   /* 드래그 이동(마우스·터치 공용) */
   const grip=remote.querySelector(".fr-grip"); let drag=null;
   grip.addEventListener("pointerdown",e=>{
