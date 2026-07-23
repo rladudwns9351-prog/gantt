@@ -1475,14 +1475,18 @@ function initTokenClientIfNeeded(){
   return true;
 }
 function requestToken(interactive){
-  return new Promise((resolve,reject)=>{
+  if(!interactive&&gTokenPending&&gTokenPending.promise)return gTokenPending.promise;   // 이미 요청 진행 중이면 재사용(팝업 중복 방지)
+  const pr=new Promise((resolve,reject)=>{
     if(!initTokenClientIfNeeded()){reject(new Error("GIS 로드 안됨"));return;}
     gTokenPending={resolve,reject};
     const _hint=(gcalCfg&&gcalCfg.account)||GCAL_ACCOUNT_HINT;
     try{gTokenClient.requestAccessToken({prompt:interactive?"consent":"", hint:_hint, login_hint:_hint});}
     catch(e){gTokenPending=null;reject(e);}
   });
+  if(gTokenPending)gTokenPending.promise=pr;
+  return pr;
 }
+function gcalTokenOk(){return !!(gToken&&Date.now()<gTokenExp);}
 async function ensureToken(interactive){
   if(gToken&&Date.now()<gTokenExp)return gToken;
   return await requestToken(interactive);
@@ -1501,16 +1505,34 @@ async function gapi(method,url,body){
   return j;
 }
 
-/* ---- 전용 캘린더 확보(없으면 생성, 이름으로 재사용) ---- */
+/* ---- 전용 캘린더 확보(없으면 생성, 이름으로 재사용, 중복 감지·자동 통일) ---- */
+let gcalDupCals=0,gcalCalChecked=false;
+async function countEvents(cid){
+  try{const r=await gapi("GET",GBASE+"/calendars/"+encodeURIComponent(cid)+"/events?maxResults=250&fields=items(id)");
+    return (r.items||[]).length;}catch(e){return -1;}
+}
+async function pickCalendar(matches,preferId){
+  const counts={};
+  for(const c of matches)counts[c.id]=await countEvents(c.id);
+  const maxN=Math.max.apply(null,matches.map(c=>counts[c.id]));
+  if(preferId&&counts[preferId]!==undefined&&counts[preferId]>=maxN)return preferId;   // 기존 캘린더가 최다 → 유지(안정)
+  let best=matches[0].id,bestN=-1;
+  for(const c of matches){if(counts[c.id]>bestN){bestN=counts[c.id];best=c.id;}}
+  return best;   // 일정이 가장 많은 캘린더 = 폰에서 실제 쓰는 캘린더
+}
 async function ensureCalendar(){
-  if(gcalCfg.calendarId){
-    try{await gapi("GET",GBASE+"/calendars/"+encodeURIComponent(gcalCfg.calendarId));return gcalCfg.calendarId;}catch(e){}
-  }
+  if(gcalCfg.calendarId&&gcalCalChecked)return gcalCfg.calendarId;   // 세션당 1회만 전체 점검
   const list=await gapi("GET",GBASE+"/users/me/calendarList?maxResults=250");
-  const found=(list.items||[]).find(c=>c.summary===GCAL_CAL_NAME);
-  let id;
-  if(found)id=found.id;
-  else{const cal=await gapi("POST",GBASE+"/calendars",{summary:GCAL_CAL_NAME,timeZone:"Asia/Seoul"});id=cal.id;}
+  const matches=(list.items||[]).filter(c=>c.summary===GCAL_CAL_NAME);
+  gcalDupCals=matches.length;
+  let id=null;
+  if(matches.length===1)id=matches[0].id;
+  else if(matches.length>1)id=await pickCalendar(matches,gcalCfg.calendarId||null);   // 중복: 일정 많은 쪽으로 통일
+  else{
+    if(gcalCfg.calendarId){try{await gapi("GET",GBASE+"/calendars/"+encodeURIComponent(gcalCfg.calendarId));id=gcalCfg.calendarId;}catch(e){}}
+    if(!id){const cal=await gapi("POST",GBASE+"/calendars",{summary:GCAL_CAL_NAME,timeZone:"Asia/Seoul"});id=cal.id;}
+  }
+  gcalCalChecked=true;
   gcalCfg.calendarId=id;saveGcalCfg(gcalCfg);
   return id;
 }
@@ -1642,30 +1664,45 @@ async function gcalSync(interactive){
   if(!gcalConfigured()||gcalBusy)return;
   if(location.protocol==="file:"){setGcalUI("off","📅 https에서만 작동");return;}
   gcalBusy=true;setGcalUI("busy","📅 동기화 중…");
+  const _tok0=state.gcalSyncToken,_cal0=state.gcalCalUsed;
   try{
     if(interactive)await requestToken(true);else await ensureToken(false);
     const cid=await ensureCalendar();
     calEvents=GBASE+"/calendars/"+encodeURIComponent(cid)+"/events";
     let changed=false;
+    if(state.gcalCalUsed&&state.gcalCalUsed!==cid){   // 사용 캘린더 변경(중복 통일 등) → 매핑 초기화 후 전체 재동기화
+      console.warn("[간트차트] 동기화 캘린더 변경 → 전체 재동기화:",state.gcalCalUsed,"→",cid);
+      for(const t of allRealTasks()){delete t.gcalId;delete t.gcalUpdated;}
+      state.gcalSyncToken=null;state.gcalPendingDeletes=[];changed=true;
+    }
+    state.gcalCalUsed=cid;
     if(await gcalPull())changed=true;
     if(await gcalPush())changed=true;
     if(changed)persistAfterGcal();
+    else if(state.gcalSyncToken!==_tok0||state.gcalCalUsed!==_cal0)saveLocalOnly();   // 토큰만 갱신돼도 저장
     const p=document.getElementById("gcalPill");
     if(gcalBadDates.length){
       setGcalUI("warn","📅 연동됨 "+nowHM()+" · 날짜오류 "+gcalBadDates.length+"건 제외");
       if(p)p.title="구글 캘린더로 못 보낸 항목(시작/종료 날짜 확인 필요):\n- "+gcalBadDates.join("\n- ");
       console.warn("[간트차트] 날짜 오류로 캘린더 동기화 제외:",gcalBadDates);
+    }else if(gcalDupCals>1){
+      setGcalUI("warn","📅 연동됨 "+nowHM()+" · ⚠ 캘린더 중복 "+gcalDupCals+"개");
+      if(p)p.title="구글 캘린더에 「간트차트」 이름의 캘린더가 "+gcalDupCals+"개 있습니다.\n일정이 가장 많은 캘린더로 자동 통일했습니다.\n구글 캘린더(웹)에서 비어있는 중복 캘린더를 삭제하면 경고가 사라집니다.";
     }else{
       setGcalUI("ok","📅 연동됨 "+nowHM());
       if(p)p.title="";
     }
   }catch(e){
-    if(!interactive&&!gToken)setGcalUI("none","📅 탭하여 연결");   // 새 PC 최초 1회: 클릭 → 연결
+    if(!interactive&&!gcalTokenOk()){setGcalUI("none","📅 탭하여 연결");armGestureReauth();}   // 다음 클릭 때 자동 재연결(팝업차단 회피)
     else setGcalUI("off",gcalErr(e));
   }
   finally{gcalBusy=false;}
 }
-function scheduleGcalPush(){if(!gcalConfigured())return;clearTimeout(gcalTimer);gcalTimer=setTimeout(()=>gcalSync(false),1500);}
+function scheduleGcalPush(){
+  if(!gcalConfigured())return;
+  if(!gcalTokenOk()&&!gcalBusy){try{requestToken(false).catch(()=>armGestureReauth());}catch(e){}}   // 편집 클릭 제스처 안에서 토큰 선확보(팝업차단 회피)
+  clearTimeout(gcalTimer);gcalTimer=setTimeout(()=>gcalSync(false),1500);
+}
 
 /* ---- 설정 모달 ---- */
 const gcalMask=document.getElementById("gcalMask");
@@ -1700,7 +1737,21 @@ function gcalDisconnect(){
   saveGcalCfg(null);gToken=null;gTokenClient=null;
   setGcalUI("none","📅 캘린더 꺼짐");closeGcal();
 }
-document.getElementById("gcalPill").onclick=openGcal;
+/* 토큰 만료 시 다음 사용자 클릭에서 자동 재연결(클릭 제스처 안에서 토큰 요청 → 팝업차단 회피) */
+let gReauthArmed=false;
+function armGestureReauth(){
+  if(gReauthArmed)return;gReauthArmed=true;
+  const h=function(){
+    document.removeEventListener("pointerdown",h,true);gReauthArmed=false;
+    if(!gcalConfigured()||gcalBusy||gcalTokenOk())return;
+    gcalSync(false);
+  };
+  document.addEventListener("pointerdown",h,true);
+}
+document.getElementById("gcalPill").onclick=function(){
+  if(gcalConfigured()&&!gcalBusy&&!gcalTokenOk())gcalSync(false);   // 클릭 제스처 안에서 즉시 재연결+동기화
+  openGcal();
+};
 document.getElementById("gcalCancel").onclick=closeGcal;
 document.getElementById("gcalConnect").onclick=gcalConnect;
 document.getElementById("gcalClear").onclick=gcalDisconnect;
@@ -1719,9 +1770,15 @@ function initGcal(){
     else setGcalUI("off","📅 GIS 로드 실패");
   })();
 }
-document.addEventListener("visibilitychange",()=>{if(!document.hidden&&gcalConfigured()&&!gcalBusy)gcalSync(false);});
-window.addEventListener("focus",()=>{if(gcalConfigured()&&!gcalBusy)gcalSync(false);});
-setInterval(()=>{if(gcalConfigured()&&!document.hidden&&!gcalBusy)gcalSync(false);},30000);
+function gcalAutoSync(){   // 자동 동기화: 토큰 유효하면 즉시, 만료면 다음 클릭 때 재연결 예약(팝업차단 회피)
+  if(!gcalConfigured()||gcalBusy)return;
+  if(gcalTokenOk())gcalSync(false);
+  else{setGcalUI("none","📅 탭하여 연결");armGestureReauth();}
+}
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)gcalAutoSync();});
+window.addEventListener("focus",gcalAutoSync);
+window.addEventListener("online",gcalAutoSync);
+setInterval(()=>{if(!document.hidden)gcalAutoSync();},30000);
 
 /* ==================== 마감 지난 할 일(최상단 처리 패널) ==================== */
 function renderOverTop(){
