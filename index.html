@@ -297,6 +297,32 @@
   .today-item .pin-btn{align-self:center;margin-left:2px}
   .pbtn.pin-toggle.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
 
+  /* ===== 이미지 첨부(USB 폴더 저장) ===== */
+  .img-btn{border:1px solid var(--line-strong);background:var(--panel);border-radius:8px;padding:2px 7px;font-size:12px;
+    line-height:1.35;cursor:pointer;font-family:inherit;flex:none;opacity:.38;filter:grayscale(1);transition:.12s;
+    align-self:flex-start;touch-action:auto;display:inline-flex;align-items:center;gap:3px}
+  .img-btn:hover{opacity:.85;filter:grayscale(.2);border-color:var(--accent)}
+  .img-btn.has{opacity:1;filter:none;border-color:var(--accent);color:var(--accent);font-weight:800}
+  .img-btn .n{font-family:'JetBrains Mono',monospace;font-size:11px}
+  .today-item .img-btn{align-self:center}
+  .today-item.dropping,.card.dropping{border-color:var(--accent);background:var(--accent-soft);outline:2px dashed var(--accent);outline-offset:2px}
+  #imgModal .modal{max-width:560px}
+  .img-drop{border:2px dashed var(--line-strong);border-radius:14px;padding:18px;text-align:center;color:var(--muted);
+    font-size:12.5px;line-height:1.7;cursor:pointer;transition:.12s}
+  .img-drop:hover,.img-drop.hot{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+  .img-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-top:14px}
+  .img-cell{position:relative;border:1px solid var(--line);border-radius:11px;overflow:hidden;background:var(--paper);aspect-ratio:1/1}
+  .img-cell img{width:100%;height:100%;object-fit:cover;display:block;cursor:zoom-in}
+  .img-cell .miss{display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:11px;color:var(--muted);text-align:center;padding:8px}
+  .img-cell .x{position:absolute;top:5px;right:5px;border:none;background:rgba(33,30,27,.72);color:#fff;border-radius:7px;
+    width:22px;height:22px;font-size:13px;line-height:1;cursor:pointer;font-family:inherit}
+  .img-cell .x:hover{background:var(--over)}
+  .img-empty{color:var(--muted);font-size:12.5px;text-align:center;padding:18px 2px}
+  .img-note{font-size:11.5px;color:var(--muted);line-height:1.65;margin-top:12px}
+  .img-lens{position:fixed;inset:0;z-index:80;background:rgba(33,30,27,.85);display:none;align-items:center;justify-content:center;padding:24px;cursor:zoom-out}
+  .img-lens.show{display:flex}
+  .img-lens img{max-width:100%;max-height:100%;border-radius:12px;box-shadow:0 24px 60px -18px rgba(0,0,0,.7)}
+
   #dragOverlay{position:fixed;inset:0;z-index:60;display:none;pointer-events:none;background:rgba(33,30,27,.38);
     backdrop-filter:blur(1px);align-items:center;justify-content:center;padding:24px}
   #dragOverlay.show{display:flex}
@@ -376,6 +402,7 @@
     <input type="file" id="importFile" accept="application/json">
     <button class="sync-pill none" id="syncPill" title="클라우드 동기화 설정"><span class="sdot"></span><span id="syncTxt">동기화 꺼짐</span></button>
     <button class="sync-pill none" id="gcalPill" title="구글 캘린더 양방향 연동"><span class="sdot"></span><span id="gcalTxt">📅 캘린더 꺼짐</span></button>
+    <button class="sync-pill none" id="imgPill" title="이미지 저장 폴더(USB) 연결"><span class="sdot"></span><span id="imgTxt">🖼 이미지 폴더 미연결</span></button>
     <button class="btn ghost" id="recBtn">🔁 반복</button>
     <button class="btn ghost" id="importBtn">불러오기</button>
     <button class="btn ghost" id="exportBtn">내보내기</button>
@@ -694,6 +721,23 @@ create policy "anon_all" on schedule_sync
   </div>
 </div>
 
+<div class="mask" id="imgModal">
+  <div class="modal">
+    <h3 id="imgMTitle">이미지 첨부</h3>
+    <div class="img-drop" id="imgDrop">
+      여기로 <b>드래그&amp;드롭</b> 하거나 <b>Ctrl+V</b> 로 붙여넣기<br>
+      <span style="font-size:11.5px">(클릭하면 파일 선택창이 열립니다)</span>
+    </div>
+    <input type="file" id="imgFile" accept="image/*" multiple style="display:none">
+    <div class="img-grid" id="imgGrid"></div>
+    <div class="img-note" id="imgNote"></div>
+    <div class="modal-acts">
+      <button class="btn ghost" id="imgClose">닫기</button>
+    </div>
+  </div>
+</div>
+<div class="img-lens" id="imgLens"><img id="imgLensImg" alt=""></div>
+
 <div id="dragOverlay">
   <div class="drop-zones">
     <div class="drop-zone" data-zone="req">📦 재고요청<span class="z-sub">여기에 놓기</span></div>
@@ -1004,7 +1048,7 @@ function renderToday(){
         <span class="pdot" style="background:${PRIO[t.priority]}"></span>
         <span class="swatch" style="background:${prioColor(t)}"></span>
         <span class="nm">🔁 ${escapeHtml(t.name)}</span><span class="tag recur">반복</span>
-        <span class="right"><span class="dday">오늘</span></span></div>`;
+        <span class="right">${imgBadge("recur",t.id,imgCount("recur",t.id))}<span class="dday">오늘</span></span></div>`;
     }
     const pr=progressOf(t),isDue=(+pd(t.end)===+td),isStart=(+pd(t.start)===+td);
     const tag=isDue?'<span class="tag due">오늘 마감</span>':(isStart?'<span class="tag start">오늘 시작</span>':'');
@@ -1017,6 +1061,7 @@ function renderToday(){
         <span class="mini"><i style="width:${pr}%"></i></span>
         <span class="pct">${pr}%</span>
         <span class="dday ${isDue?'due':''}">${ddText(t)}</span>
+        ${imgBadge("task",t.id,imgCount("task",t.id))}
         <span class="ti-acts">
           <button class="ti-btn done" title="완료 처리" data-act="complete" data-id="${t.id}">완료</button>
           <button class="ti-btn del" title="삭제" data-act="del" data-id="${t.id}">삭제</button>
@@ -1884,6 +1929,7 @@ function cardHTML(c){
   return `<div class="card${c.pinned?' pinned':''}" data-id="${c.id}" style="--pc:${col}">
     <span class="card-dot"></span>
     <div class="card-main"><div class="card-title">${escapeHtml(c.title||"제목 없음")}</div>${memo}</div>
+    ${imgBadge("card",c.id,(c.imgs||[]).length)}
     <button class="pin-btn${c.pinned?' on':''}" data-id="${c.id}" title="최상단 고정/해제">📌</button>
   </div>`;
 }
@@ -2164,7 +2210,234 @@ boardWrap.addEventListener("click",e=>{
   grip.addEventListener("pointerup",e=>{if(drag&&e.pointerId===drag.pid){try{grip.releasePointerCapture(e.pointerId);}catch(_){}drag=null;}});
 })();
 
-render();applyView();applyFold();initSync();initGcal();
+/* ==================== 이미지 첨부 (USB 폴더 직접 저장) ====================
+   - 이미지 실물은 사용자가 지정한 폴더(USB 등)에 파일로 저장
+   - state 에는 파일명만 기록 → 기존 저장/동기화 용량에 영향 없음
+   - 크롬/엣지 + HTTPS(깃허브 페이지) 환경 필요 */
+const IMG_DB="ganttImgDir_v1";
+let imgDir=null;                 // FileSystemDirectoryHandle
+let imgDirState="none";          // none | need | ready | unsupported
+let imgTarget=null;              // {kind,id}
+const imgUrlCache=new Map();
+
+function idbOpen(){return new Promise((res,rej)=>{const r=indexedDB.open(IMG_DB,1);
+  r.onupgradeneeded=()=>{try{r.result.createObjectStore("kv");}catch(_){}};
+  r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);});}
+function idbPut(k,v){return idbOpen().then(db=>new Promise((res,rej)=>{
+  const t=db.transaction("kv","readwrite");t.objectStore("kv").put(v,k);
+  t.oncomplete=()=>res();t.onerror=()=>rej(t.error);}));}
+function idbGet(k){return idbOpen().then(db=>new Promise((res,rej)=>{
+  const t=db.transaction("kv","readonly"),q=t.objectStore("kv").get(k);
+  q.onsuccess=()=>res(q.result);q.onerror=()=>rej(q.error);}));}
+
+/* 항목(할 일 / 반복 / 카드) 찾기 */
+function imgHost(kind,id){
+  if(kind==="card"){ensureBoard();return state.board.cards.find(x=>x.id===id)||null;}
+  if(kind==="recur"){const rid=String(id).startsWith("r:")?String(id).slice(2):id;
+    return (state.recurring||[]).find(x=>x.id===rid)||null;}
+  const f=findTask(id);return f?f.t:null;
+}
+function imgCount(kind,id){const h=imgHost(kind,id);return h&&h.imgs?h.imgs.length:0;}
+function imgPersist(kind){if(kind==="card")saveBoard();else save();}
+function imgBadge(kind,id,n){
+  return `<button class="img-btn${n?' has':''}" data-imgbtn="1" data-kind="${kind}" data-id="${id}" title="이미지 첨부/보기">🖼${n?`<span class="n">${n}</span>`:""}</button>`;
+}
+
+/* 폴더 연결 상태 표시 */
+function updateImgPill(){
+  const p=document.getElementById("imgPill"),t=document.getElementById("imgTxt");
+  if(!p||!t)return;
+  p.className="sync-pill "+(imgDirState==="ready"?"ok":imgDirState==="need"?"warn":imgDirState==="unsupported"?"off":"none");
+  t.textContent=imgDirState==="ready"?("🖼 "+(imgDir&&imgDir.name?imgDir.name:"폴더")+" 연결됨")
+    :imgDirState==="need"?"🖼 폴더 재승인 필요"
+    :imgDirState==="unsupported"?"🖼 이 브라우저 미지원"
+    :"🖼 이미지 폴더 미연결";
+}
+async function pickImgFolder(){
+  if(!window.showDirectoryPicker){
+    alert("이 브라우저에서는 폴더 저장을 사용할 수 없습니다.\n\n· PC 크롬 또는 엣지에서\n· https 주소(깃허브 페이지)로 접속해야 합니다.\n(안드로이드·사파리·파이어폭스 미지원)");
+    return;
+  }
+  try{
+    const h=await window.showDirectoryPicker({id:"ganttImgDir",mode:"readwrite"});
+    imgDir=h;imgDirState="ready";imgUrlCache.clear();
+    try{await idbPut("dir",h);}catch(_){}
+    updateImgPill();render();
+  }catch(_){/* 사용자가 취소 */}
+}
+async function ensureImgReady(){
+  if(!window.showDirectoryPicker){imgDirState="unsupported";updateImgPill();
+    alert("이 브라우저에서는 폴더 저장을 사용할 수 없습니다. (PC 크롬/엣지 + https 접속 필요)");return false;}
+  if(!imgDir){await pickImgFolder();return imgDirState==="ready";}
+  try{
+    let p=await imgDir.queryPermission({mode:"readwrite"});
+    if(p!=="granted")p=await imgDir.requestPermission({mode:"readwrite"});
+    if(p==="granted"){imgDirState="ready";updateImgPill();return true;}
+  }catch(_){}
+  imgDirState="need";updateImgPill();return false;
+}
+async function restoreImgFolder(){
+  if(!window.showDirectoryPicker){imgDirState="unsupported";updateImgPill();return;}
+  try{
+    const h=await idbGet("dir");
+    if(!h){imgDirState="none";updateImgPill();return;}
+    imgDir=h;
+    const p=await h.queryPermission({mode:"readwrite"});
+    imgDirState=(p==="granted")?"ready":"need";
+  }catch(_){imgDirState="none";}
+  updateImgPill();
+}
+
+/* 파일 입출력 */
+function imgExt(file){
+  const m=(file.type||"").split("/")[1];
+  const e=(m||"png").toLowerCase().replace(/[^a-z0-9]/g,"");
+  return e==="jpeg"?"jpg":(e||"png");
+}
+async function imgWrite(file,name){
+  const fh=await imgDir.getFileHandle(name,{create:true});
+  const w=await fh.createWritable();await w.write(file);await w.close();
+}
+async function imgURL(name){
+  if(imgUrlCache.has(name))return imgUrlCache.get(name);
+  if(!imgDir)return null;
+  try{
+    const fh=await imgDir.getFileHandle(name);
+    const f=await fh.getFile();
+    const u=URL.createObjectURL(f);imgUrlCache.set(name,u);return u;
+  }catch(_){return null;}
+}
+async function imgAttach(kind,id,files){
+  const list=Array.from(files||[]).filter(f=>f&&f.type&&f.type.indexOf("image/")===0);
+  if(!list.length)return 0;
+  if(!(await ensureImgReady()))return 0;
+  const h=imgHost(kind,id);if(!h)return 0;
+  if(!Array.isArray(h.imgs))h.imgs=[];
+  let ok=0;
+  for(const f of list){
+    const name=String(id).replace(/[^a-zA-Z0-9_-]/g,"")+"_"+Date.now()+"_"+Math.random().toString(36).slice(2,7)+"."+imgExt(f);
+    try{await imgWrite(f,name);h.imgs.push({f:name,t:Date.now(),s:f.size});ok++;}
+    catch(err){alert("이미지 저장 실패: "+(err&&err.message?err.message:err));}
+  }
+  if(ok){imgPersist(kind);render();if(imgTarget&&imgTarget.kind===kind&&imgTarget.id===id)renderImgGrid();}
+  return ok;
+}
+async function imgRemove(kind,id,name){
+  const h=imgHost(kind,id);if(!h||!Array.isArray(h.imgs))return;
+  if(!confirm("이 이미지를 삭제할까요?\n(폴더의 원본 파일도 함께 삭제됩니다)"))return;
+  h.imgs=h.imgs.filter(x=>x.f!==name);
+  if(imgUrlCache.has(name)){try{URL.revokeObjectURL(imgUrlCache.get(name));}catch(_){}imgUrlCache.delete(name);}
+  if(imgDir){try{await imgDir.removeEntry(name);}catch(_){}}
+  imgPersist(kind);render();renderImgGrid();
+}
+
+/* 이미지 모달 */
+const imgModal=document.getElementById("imgModal");
+function openImgModal(kind,id){
+  const h=imgHost(kind,id);if(!h)return;
+  imgTarget={kind,id};
+  document.getElementById("imgMTitle").textContent="이미지 첨부 — "+((h.name||h.title||"항목").slice(0,28));
+  imgModal.classList.add("show");
+  renderImgGrid();
+}
+function closeImgModal(){imgModal.classList.remove("show");imgTarget=null;}
+function renderImgGrid(){
+  const g=document.getElementById("imgGrid"),note=document.getElementById("imgNote");
+  if(!imgTarget){g.innerHTML="";return;}
+  const h=imgHost(imgTarget.kind,imgTarget.id);
+  const arr=(h&&h.imgs)||[];
+  note.textContent=imgDirState==="ready"
+    ? "저장 위치: "+(imgDir&&imgDir.name?imgDir.name:"선택한 폴더")+" · 파일명만 앱에 기록되므로 폴더(USB)를 옮기면 다시 연결해 주세요."
+    : "아직 저장 폴더가 연결되지 않았습니다. 이미지를 넣으면 폴더 선택창이 열립니다.";
+  if(!arr.length){g.innerHTML='<div class="img-empty">첨부된 이미지가 없습니다.</div>';return;}
+  g.innerHTML=arr.map(o=>`<div class="img-cell" data-f="${escapeHtml(o.f)}">
+      <div class="miss">불러오는 중…</div>
+      <button class="x" data-imgdel="${escapeHtml(o.f)}" title="삭제">✕</button>
+    </div>`).join("");
+  arr.forEach(async o=>{
+    const cell=g.querySelector('.img-cell[data-f="'+CSS.escape(o.f)+'"]');if(!cell)return;
+    const u=await imgURL(o.f);
+    const ph=cell.querySelector(".miss");if(!ph)return;
+    if(u){const im=document.createElement("img");im.src=u;im.alt="";im.dataset.lens=u;cell.replaceChild(im,ph);}
+    else ph.textContent="파일 없음\n(폴더 미연결)";
+  });
+}
+document.getElementById("imgClose").onclick=closeImgModal;
+imgModal.addEventListener("click",e=>{if(e.target===imgModal)closeImgModal();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&imgModal.classList.contains("show"))closeImgModal();});
+document.getElementById("imgGrid").addEventListener("click",e=>{
+  const del=e.target.closest("[data-imgdel]");
+  if(del){if(imgTarget)imgRemove(imgTarget.kind,imgTarget.id,del.dataset.imgdel);return;}
+  const im=e.target.closest("img[data-lens]");
+  if(im){document.getElementById("imgLensImg").src=im.dataset.lens;document.getElementById("imgLens").classList.add("show");}
+});
+document.getElementById("imgLens").addEventListener("click",()=>document.getElementById("imgLens").classList.remove("show"));
+
+/* 모달 내 드래그&드롭 / 클릭 파일선택 / Ctrl+V */
+const imgDropEl=document.getElementById("imgDrop"),imgFileEl=document.getElementById("imgFile");
+imgDropEl.addEventListener("click",()=>imgFileEl.click());
+imgFileEl.addEventListener("change",e=>{if(imgTarget)imgAttach(imgTarget.kind,imgTarget.id,e.target.files);e.target.value="";});
+["dragenter","dragover"].forEach(ev=>imgDropEl.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();imgDropEl.classList.add("hot");}));
+["dragleave","drop"].forEach(ev=>imgDropEl.addEventListener(ev,e=>{e.preventDefault();e.stopPropagation();imgDropEl.classList.remove("hot");}));
+imgDropEl.addEventListener("drop",e=>{if(imgTarget&&e.dataTransfer)imgAttach(imgTarget.kind,imgTarget.id,e.dataTransfer.files);});
+document.addEventListener("paste",e=>{
+  if(!imgModal.classList.contains("show")||!imgTarget)return;
+  const items=(e.clipboardData&&e.clipboardData.items)||[];
+  const files=[];
+  for(const it of items){if(it.kind==="file"){const f=it.getAsFile();if(f&&f.type.indexOf("image/")===0)files.push(f);}}
+  if(files.length){e.preventDefault();imgAttach(imgTarget.kind,imgTarget.id,files);}
+});
+
+/* 목록 위에 바로 드래그&드롭 */
+function rowInfo(el){
+  const card=el.closest&&el.closest(".card");
+  if(card)return {kind:"card",id:card.dataset.id,el:card};
+  const it=el.closest&&el.closest(".today-item");
+  if(it)return {kind:String(it.dataset.id).startsWith("r:")?"recur":"task",id:it.dataset.id,el:it};
+  return null;
+}
+["#todayGrid","#boardWrap"].forEach(sel=>{
+  const zone=document.querySelector(sel);if(!zone)return;
+  zone.addEventListener("dragover",e=>{
+    const r=rowInfo(e.target);if(!r)return;
+    e.preventDefault();e.dataTransfer.dropEffect="copy";
+    document.querySelectorAll(".dropping").forEach(x=>{if(x!==r.el)x.classList.remove("dropping");});
+    r.el.classList.add("dropping");
+  });
+  zone.addEventListener("dragleave",e=>{const r=rowInfo(e.target);if(r&&!r.el.contains(e.relatedTarget))r.el.classList.remove("dropping");});
+  zone.addEventListener("drop",e=>{
+    const r=rowInfo(e.target);if(!r)return;
+    e.preventDefault();r.el.classList.remove("dropping");
+    if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length)imgAttach(r.kind,r.id,e.dataTransfer.files);
+  });
+});
+
+/* 항목 밖에 잘못 떨어뜨렸을 때 브라우저가 파일을 열어버리는 것 방지 */
+window.addEventListener("dragover",e=>{
+  const ty=e.dataTransfer&&e.dataTransfer.types;
+  if(ty&&Array.prototype.indexOf.call(ty,"Files")>=0)e.preventDefault();
+});
+window.addEventListener("drop",e=>{
+  if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files.length)e.preventDefault();
+  document.querySelectorAll(".dropping").forEach(x=>x.classList.remove("dropping"));
+});
+
+/* 🖼 배지 클릭 → 모달 (드래그·편집보다 우선) */
+["#todayGrid","#boardWrap"].forEach(sel=>{
+  const zone=document.querySelector(sel);if(!zone)return;
+  zone.addEventListener("pointerdown",e=>{if(e.target.closest("[data-imgbtn]"))e.stopPropagation();},true);
+  zone.addEventListener("pointerup",e=>{if(e.target.closest("[data-imgbtn]"))e.stopPropagation();},true);
+  zone.addEventListener("click",e=>{
+    const b=e.target.closest("[data-imgbtn]");if(!b)return;
+    e.stopPropagation();openImgModal(b.dataset.kind,b.dataset.id);
+  },true);
+});
+document.getElementById("imgPill").addEventListener("click",()=>{
+  if(imgDirState==="need")ensureImgReady().then(()=>{imgUrlCache.clear();render();});
+  else pickImgFolder();
+});
+
+render();applyView();applyFold();initSync();initGcal();restoreImgFolder();
 </script>
 </body>
 </html>
