@@ -286,6 +286,17 @@
   .card-memo{font-size:12px;color:var(--muted);margin-top:5px;white-space:pre-wrap;word-break:break-word;line-height:1.55}
   .card-empty{color:var(--muted);font-size:12.5px;padding:12px 2px;text-align:center;border:1px dashed var(--line-strong);border-radius:10px}
 
+  /* ===== 압정(최상단 고정) 버튼 ===== */
+  .pin-btn{border:1px solid var(--line-strong);background:var(--panel);border-radius:8px;padding:2px 7px;font-size:12.5px;
+    line-height:1.35;cursor:pointer;font-family:inherit;flex:none;opacity:.32;filter:grayscale(1);transition:.12s;
+    align-self:flex-start;touch-action:auto}
+  .pin-btn:hover{opacity:.8;filter:grayscale(.2);border-color:var(--accent)}
+  .pin-btn.on{opacity:1;filter:none;border-color:var(--accent);background:var(--accent-soft)}
+  .card.pinned{border-color:var(--accent);background:var(--accent-soft)}
+  .today-item.pinned{border-color:var(--accent);background:var(--accent-soft)}
+  .today-item .pin-btn{align-self:center;margin-left:2px}
+  .pbtn.pin-toggle.sel{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+
   #dragOverlay{position:fixed;inset:0;z-index:60;display:none;pointer-events:none;background:rgba(33,30,27,.38);
     backdrop-filter:blur(1px);align-items:center;justify-content:center;padding:24px}
   #dragOverlay.show{display:flex}
@@ -482,6 +493,12 @@
       </div>
     </div>
     <div class="fld">
+      <label>고정</label>
+      <div class="pseg" id="pinSeg">
+        <button class="pbtn pin-toggle" id="fPin" type="button">📌 최상단 고정</button>
+      </div>
+    </div>
+    <div class="fld">
       <label>색상</label>
       <div class="swatches" id="swatches"></div>
     </div>
@@ -650,6 +667,12 @@ create policy "anon_all" on schedule_sync
       </div>
     </div>
     <div class="fld">
+      <label>고정</label>
+      <div class="pseg" id="cPinSeg">
+        <button class="pbtn pin-toggle" id="cPin" type="button">📌 최상단 고정</button>
+      </div>
+    </div>
+    <div class="fld">
       <label>폴더</label>
       <div class="cseg" id="cFolderSeg">
         <button class="pbtn" data-f="req">📦 재고요청</button>
@@ -719,6 +742,7 @@ let viewMode="cal";
 let editing=null;
 let pickedColor=COLORS[0];
 let pickedPrio="normal";
+let pickedPin=false;
 let searchTerm="";
 
 /* ---------- date helpers ---------- */
@@ -904,7 +928,7 @@ function recurItems(y,m0){
   return (state.recurring||[]).map(r=>{
     const dt=recurDates(r,y,m0);if(!dt)return null;
     return {id:"r:"+r.id,_recur:r.id,name:r.name,start:dt.start,end:dt.end,
-            color:r.color,priority:r.priority||'normal',done:false};
+            color:r.color,priority:r.priority||'normal',done:false,pinned:!!r.pinned};
   }).filter(Boolean);
 }
 function recurSummary(r){
@@ -964,6 +988,7 @@ function renderToday(){
     .filter(t=>matchSearch(t)&&pd(t.start)<=td&&pd(t.end)>=td)
     .map(t=>({t,recur:true}));
   const list=real.concat(recs).sort((a,b)=>{
+    const dp=(b.t.pinned?1:0)-(a.t.pinned?1:0);if(dp)return dp;
     const de=pd(a.t.end)-pd(b.t.end);if(de)return de;
     const ord={high:0,normal:1,low:2};
     return (ord[a.t.priority]??1)-(ord[b.t.priority]??1);
@@ -974,7 +999,8 @@ function renderToday(){
   g.innerHTML=list.map(o=>{
     const t=o.t;
     if(o.recur){
-      return `<div class="today-item" data-id="${t.id}">
+      return `<div class="today-item${t.pinned?' pinned':''}" data-id="${t.id}">
+        <button class="pin-btn${t.pinned?' on':''}" data-act="pin" data-pin="recur" data-id="${t.id}" title="최상단 고정/해제">📌</button>
         <span class="pdot" style="background:${PRIO[t.priority]}"></span>
         <span class="swatch" style="background:${prioColor(t)}"></span>
         <span class="nm">🔁 ${escapeHtml(t.name)}</span><span class="tag recur">반복</span>
@@ -982,7 +1008,8 @@ function renderToday(){
     }
     const pr=progressOf(t),isDue=(+pd(t.end)===+td),isStart=(+pd(t.start)===+td);
     const tag=isDue?'<span class="tag due">오늘 마감</span>':(isStart?'<span class="tag start">오늘 시작</span>':'');
-    return `<div class="today-item" data-id="${t.id}">
+    return `<div class="today-item${t.pinned?' pinned':''}" data-id="${t.id}">
+      <button class="pin-btn${t.pinned?' on':''}" data-act="pin" data-pin="task" data-id="${t.id}" title="최상단 고정/해제">📌</button>
       <span class="pdot" style="background:${PRIO[t.priority]}"></span>
       <span class="swatch" style="background:${prioColor(t)}"></span>
       <span class="nm">${escapeHtml(t.name)}</span>${tag}
@@ -1168,6 +1195,7 @@ function buildSwatches(){document.getElementById("swatches").innerHTML="";
   COLORS.forEach(c=>{const s=document.createElement("div");s.className="sw"+(c===pickedColor?" sel":"");
     s.style.background=c;s.onclick=()=>{pickedColor=c;buildSwatches();};document.getElementById("swatches").appendChild(s);});}
 function buildPrio(){document.querySelectorAll("#prioSeg .pbtn").forEach(x=>x.classList.toggle("sel",x.dataset.p===pickedPrio));}
+function buildPin(){const b=document.getElementById("fPin");if(b)b.classList.toggle("sel",!!pickedPin);}
 function buildWeekChips(){
   document.getElementById("weekChips").innerHTML=weeksCache.map(w=>
     `<button class="chip" data-s="${iso(w.start)}" data-e="${iso(w.end)}">${w.idx+1}주</button>`).join("");
@@ -1191,8 +1219,8 @@ function openAdd(prefillDate){
   document.getElementById("fName").value="";
   document.getElementById("fStart").value=d;
   document.getElementById("fEnd").value=d;
-  pickedColor=COLORS[bucket().tasks.length%COLORS.length];pickedPrio="normal";
-  buildSwatches();buildPrio();buildWeekChips();updatePreview();showModal();
+  pickedColor=COLORS[bucket().tasks.length%COLORS.length];pickedPrio="normal";pickedPin=false;
+  buildSwatches();buildPrio();buildPin();buildWeekChips();updatePreview();showModal();
 }
 function openEdit(id,focusDates){
   const _f=findTask(id);if(!_f)return;const t=_f.t;
@@ -1204,8 +1232,8 @@ function openEdit(id,focusDates){
   document.getElementById("fName").value=t.name;
   document.getElementById("fStart").value=t.start;
   document.getElementById("fEnd").value=t.end;
-  pickedColor=t.color;pickedPrio=t.priority||"normal";
-  buildSwatches();buildPrio();buildWeekChips();updatePreview();showModal();
+  pickedColor=t.color;pickedPrio=t.priority||"normal";pickedPin=!!t.pinned;
+  buildSwatches();buildPrio();buildPin();buildWeekChips();updatePreview();showModal();
   if(focusDates)setTimeout(()=>document.getElementById("fStart").focus(),60);
 }
 function showModal(){mask.classList.add("show");if(!editing||document.getElementById("fName").value==="")setTimeout(()=>document.getElementById("fName").focus(),50);}
@@ -1214,7 +1242,7 @@ function readForm(){
   let s=document.getElementById("fStart").value, e=document.getElementById("fEnd").value;
   if(!s)s=e||iso(today0());if(!e)e=s;
   if(e<s){const x=s;s=e;e=x;}
-  return {name:document.getElementById("fName").value.trim()||"제목 없음",start:s,end:e,color:pickedColor,priority:pickedPrio};
+  return {name:document.getElementById("fName").value.trim()||"제목 없음",start:s,end:e,color:pickedColor,priority:pickedPrio,pinned:!!pickedPin};
 }
 function saveForm(){
   const f=readForm();
@@ -1258,6 +1286,20 @@ document.getElementById("todayGrid").addEventListener("click",e=>{
   else gotoAndEdit(id);
 });
 
+/* 압정(최상단 고정) 토글 — 오늘 할 일 */
+document.getElementById("todayGrid").addEventListener("click",e=>{
+  const p=e.target.closest(".pin-btn");if(!p)return;
+  e.stopPropagation();
+  const id=p.dataset.id;
+  if(p.dataset.pin==="recur"){
+    const r=(state.recurring||[]).find(x=>x.id===id.slice(2));
+    if(r){r.pinned=!r.pinned;save();render();}
+  }else{
+    const f=findTask(id);
+    if(f){f.t.pinned=!f.t.pinned;save();render();}
+  }
+});
+
 /* calendar interactions */
 document.getElementById("calBody").addEventListener("click",e=>{
   const bar=e.target.closest(".cal-bar");
@@ -1294,6 +1336,7 @@ document.getElementById("mComplete").onclick=completeFromModal;
 document.getElementById("fStart").addEventListener("change",function(){var sEl=document.getElementById("fStart"),eEl=document.getElementById("fEnd");if(sEl.value&&(!eEl.value||eEl.value<sEl.value))eEl.value=sEl.value;updatePreview();});
 document.getElementById("fEnd").addEventListener("change",updatePreview);
 document.getElementById("prioSeg").addEventListener("click",e=>{const b=e.target.closest(".pbtn");if(!b)return;pickedPrio=b.dataset.p;buildPrio();});
+document.getElementById("fPin").addEventListener("click",e=>{e.preventDefault();pickedPin=!pickedPin;buildPin();});
 document.getElementById("weekChips").addEventListener("click",e=>{const c=e.target.closest(".chip");if(!c)return;
   document.getElementById("fStart").value=c.dataset.s;document.getElementById("fEnd").value=c.dataset.e;updatePreview();});
 document.getElementById("fName").addEventListener("keydown",e=>{if(e.key==="Enter")saveForm();});
@@ -1838,16 +1881,17 @@ function saveBoard(){                  // 로컬 저장 + 클라우드 동기화
 function cardHTML(c){
   const col=PRIO[c.prio]||PRIO.normal;
   const memo=c.memo?`<div class="card-memo">${escapeHtml(c.memo)}</div>`:"";
-  return `<div class="card" data-id="${c.id}" style="--pc:${col}">
+  return `<div class="card${c.pinned?' pinned':''}" data-id="${c.id}" style="--pc:${col}">
     <span class="card-dot"></span>
     <div class="card-main"><div class="card-title">${escapeHtml(c.title||"제목 없음")}</div>${memo}</div>
+    <button class="pin-btn${c.pinned?' on':''}" data-id="${c.id}" title="최상단 고정/해제">📌</button>
   </div>`;
 }
 function renderBoard(){
   ensureBoard();
   FOLDERS.forEach(f=>{
     const cards=state.board.cards.filter(c=>c.folder===f.key)
-      .sort((a,b)=>(BORD[a.prio]??1)-(BORD[b.prio]??1)||(b.updatedAt||0)-(a.updatedAt||0));
+      .sort((a,b)=>((b.pinned?1:0)-(a.pinned?1:0))||(BORD[a.prio]??1)-(BORD[b.prio]??1)||(b.updatedAt||0)-(a.updatedAt||0));
     const cnt=document.querySelector('[data-cnt="'+f.key+'"]');if(cnt)cnt.textContent=cards.length;
     const list=document.querySelector('[data-list="'+f.key+'"]');if(!list)return;
     list.innerHTML=cards.length?cards.map(cardHTML).join("")
@@ -1868,26 +1912,27 @@ function applyFold(){
 
 /* 카드 모달 */
 const cardMask=document.getElementById("cardMask");
-let cardEditing=null,cardPrio="normal",cardFolder="req";
+let cardEditing=null,cardPrio="normal",cardFolder="req",cardPin=false;
+function selCpin(){const b=document.getElementById("cPin");if(b)b.classList.toggle("sel",!!cardPin);}
 function selCseg(seg,attr,val){document.querySelectorAll("#"+seg+" .pbtn").forEach(x=>x.classList.toggle("sel",x.dataset[attr]===val));}
 function openCardAdd(folder){
-  cardEditing=null;cardPrio="normal";cardFolder=folder||"req";
+  cardEditing=null;cardPrio="normal";cardFolder=folder||"req";cardPin=false;
   document.getElementById("cardMTitle").textContent="카드 추가";
   document.getElementById("cName").value="";
   document.getElementById("cMemo").value="";
   document.getElementById("cDel").style.display="none";
-  selCseg("cPrioSeg","p",cardPrio);selCseg("cFolderSeg","f",cardFolder);
+  selCseg("cPrioSeg","p",cardPrio);selCseg("cFolderSeg","f",cardFolder);selCpin();
   cardMask.classList.add("show");
   setTimeout(()=>document.getElementById("cName").focus(),50);
 }
 function openCardEdit(id){
   ensureBoard();const c=state.board.cards.find(x=>x.id===id);if(!c)return;
-  cardEditing=id;cardPrio=c.prio||"normal";cardFolder=c.folder||"req";
+  cardEditing=id;cardPrio=c.prio||"normal";cardFolder=c.folder||"req";cardPin=!!c.pinned;
   document.getElementById("cardMTitle").textContent="카드 편집";
   document.getElementById("cName").value=c.title||"";
   document.getElementById("cMemo").value=c.memo||"";
   document.getElementById("cDel").style.display="";
-  selCseg("cPrioSeg","p",cardPrio);selCseg("cFolderSeg","f",cardFolder);
+  selCseg("cPrioSeg","p",cardPrio);selCseg("cFolderSeg","f",cardFolder);selCpin();
   cardMask.classList.add("show");
   setTimeout(()=>document.getElementById("cName").focus(),50);
 }
@@ -1898,9 +1943,9 @@ function saveCard(){
   const memo=document.getElementById("cMemo").value;
   if(cardEditing){
     const c=state.board.cards.find(x=>x.id===cardEditing);
-    if(c){c.title=title;c.memo=memo;c.prio=cardPrio;c.folder=cardFolder;c.updatedAt=Date.now();}
+    if(c){c.title=title;c.memo=memo;c.prio=cardPrio;c.folder=cardFolder;c.pinned=!!cardPin;c.updatedAt=Date.now();}
   }else{
-    state.board.cards.push({id:uid(),title,memo,prio:cardPrio,folder:cardFolder,updatedAt:Date.now()});
+    state.board.cards.push({id:uid(),title,memo,prio:cardPrio,folder:cardFolder,pinned:!!cardPin,updatedAt:Date.now()});
   }
   saveBoard();renderBoard();closeCard();
 }
@@ -1914,6 +1959,7 @@ document.getElementById("cSave").onclick=saveCard;
 document.getElementById("cDel").onclick=delCard;
 document.getElementById("cPrioSeg").addEventListener("click",e=>{const b=e.target.closest(".pbtn");if(!b)return;cardPrio=b.dataset.p;selCseg("cPrioSeg","p",cardPrio);});
 document.getElementById("cFolderSeg").addEventListener("click",e=>{const b=e.target.closest(".pbtn");if(!b)return;cardFolder=b.dataset.f;selCseg("cFolderSeg","f",cardFolder);});
+document.getElementById("cPin").addEventListener("click",e=>{e.preventDefault();cardPin=!cardPin;selCpin();});
 document.getElementById("cName").addEventListener("keydown",e=>{if(e.key==="Enter")saveCard();});
 cardMask.addEventListener("click",e=>{if(e.target===cardMask)closeCard();});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&cardMask.classList.contains("show"))closeCard();});
@@ -1982,6 +2028,19 @@ boardWrap.addEventListener("pointerup",e=>{
   renderBoard();
 });
 boardWrap.addEventListener("pointercancel",e=>{if(cardDrag&&e.pointerId===cardDrag.pid){cleanupDrag();renderBoard();}});
+
+/* 압정(최상단 고정) 토글 — 계약건 폴더 카드 (드래그·카드편집보다 우선) */
+boardWrap.addEventListener("pointerdown",e=>{if(e.target.closest(".pin-btn"))e.stopPropagation();},true);
+boardWrap.addEventListener("pointerup",e=>{if(e.target.closest(".pin-btn"))e.stopPropagation();},true);
+boardWrap.addEventListener("click",e=>{
+  const p=e.target.closest(".pin-btn");if(!p)return;
+  e.stopPropagation();
+  ensureBoard();
+  const c=state.board.cards.find(x=>x.id===p.dataset.id);
+  if(!c)return;
+  c.pinned=!c.pinned;            // updatedAt은 건드리지 않음 → 해제 시 원래 순서로 복귀
+  saveBoard();renderBoard();
+});
 
 /* ===== 플로팅 검색 리모컨 (추가 기능) =====
    - 화면을 따라다니는 수기 검색창(드래그 이동 가능)
