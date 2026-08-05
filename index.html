@@ -438,6 +438,17 @@
   ::highlight(fr-cur){background-color:#ff8a1f;color:#fff}
   .fr-flash{animation:frFlash 1.1s ease}
   @keyframes frFlash{0%{box-shadow:0 0 0 3px var(--accent)}70%{box-shadow:0 0 0 3px var(--accent)}100%{box-shadow:0 0 0 0 transparent}}
+  /* ===== 리스트 드래그 순서 변경(핸들) ===== */
+  .ord-h{border:1px solid var(--line-strong);background:var(--panel);border-radius:7px;padding:1px 5px;font-size:12px;
+    line-height:1.35;color:var(--muted);cursor:grab;font-family:inherit;flex:none;opacity:.38;transition:.12s;
+    touch-action:none;align-self:center;user-select:none;-webkit-user-select:none}
+  .ord-h:hover{opacity:1;border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .ord-h:active{cursor:grabbing}
+  .card .ord-h,.rec-item .ord-h{align-self:flex-start;margin-top:2px}
+  .ord-drag{opacity:.35}
+  .ord-ph{border:2px dashed var(--accent);background:var(--accent-soft);border-radius:11px;flex:none;pointer-events:none}
+  body.ord-sorting{user-select:none;-webkit-user-select:none}
+  .rec-item .ord-h{margin-right:2px}
 </style>
 </head>
 <body>
@@ -1120,7 +1131,7 @@ function recurItems(y,m0){
   return (state.recurring||[]).map(r=>{
     const dt=recurDates(r,y,m0);if(!dt)return null;
     return {id:"r:"+r.id,_recur:r.id,name:r.name,start:dt.start,end:dt.end,
-            color:r.color,priority:r.priority||'normal',done:false,pinned:!!r.pinned};
+            color:r.color,priority:r.priority||'normal',done:false,pinned:!!r.pinned,ord:r.ord};
   }).filter(Boolean);
 }
 function recurSummary(r){
@@ -1179,12 +1190,13 @@ function renderToday(){
   const recs=recurItems(tn.getFullYear(),tn.getMonth())
     .filter(t=>matchSearch(t)&&pd(t.start)<=td&&pd(t.end)>=td)
     .map(t=>({t,recur:true}));
-  const list=real.concat(recs).sort((a,b)=>{
+  let list=real.concat(recs).sort((a,b)=>{
     const dp=(b.t.pinned?1:0)-(a.t.pinned?1:0);if(dp)return dp;
     const de=pd(a.t.end)-pd(b.t.end);if(de)return de;
     const ord={high:0,normal:1,low:2};
     return (ord[a.t.priority]??1)-(ord[b.t.priority]??1);
   });
+  list=sortManual(list,o=>o.t,o=>!!o.t.pinned);
   document.getElementById("todayCnt").textContent=list.length;
   const g=document.getElementById("todayGrid");
   if(!list.length){g.innerHTML='<div class="today-empty">오늘 진행할 일이 없습니다. 🎉</div>';return;}
@@ -1192,6 +1204,7 @@ function renderToday(){
     const t=o.t;
     if(o.recur){
       return `<div class="today-item${t.pinned?' pinned':''}" data-id="${t.id}">
+        ${ordHandle()}
         <button class="pin-btn${t.pinned?' on':''}" data-act="pin" data-pin="recur" data-id="${t.id}" title="최상단 고정/해제">📌</button>
         <span class="pdot" style="background:${PRIO[t.priority]}"></span>
         <span class="swatch" style="background:${prioColor(t)}"></span>
@@ -1201,6 +1214,7 @@ function renderToday(){
     const pr=progressOf(t),isDue=(+pd(t.end)===+td),isStart=(+pd(t.start)===+td);
     const tag=isDue?'<span class="tag due">오늘 마감</span>':(isStart?'<span class="tag start">오늘 시작</span>':'');
     return `<div class="today-item${t.pinned?' pinned':''}" data-id="${t.id}">
+      ${ordHandle()}
       <button class="pin-btn${t.pinned?' on':''}" data-act="pin" data-pin="task" data-id="${t.id}" title="최상단 고정/해제">📌</button>
       <span class="pdot" style="background:${PRIO[t.priority]}"></span>
       <span class="swatch" style="background:${prioColor(t)}"></span>
@@ -1350,7 +1364,7 @@ function attachDrag(bar,t,N){
 function renderLists(b){
   const all=allRealTasks();
   const items=all.filter(matchSearch);
-  const over=items.filter(t=>classify(t)==='overdue');
+  const over=sortManual(items.filter(t=>classify(t)==='overdue'),t=>t,null);
   const done=all.filter(t=>t.done).filter(matchSearch);
   // overdue
   // overdue → 최상단 경고 패널(renderOverTop)로 이동 표시. 하단 지연 섹션은 중복 방지 위해 숨김.
@@ -1358,7 +1372,8 @@ function renderLists(b){
   document.getElementById("overCnt").textContent=over.length;
   document.getElementById("overList").innerHTML=over.map(t=>{
     const late=-dayDiff(today0(),pd(t.end));
-    return `<div class="item over">
+    return `<div class="item over" data-id="${t.id}">
+      ${ordHandle()}
       <span class="pdot" style="background:${PRIO[t.priority]}"></span>
       <span class="swatch" style="background:${prioColor(t)}"></span>
       <span class="nm">${escapeHtml(t.name)}</span>
@@ -1372,7 +1387,8 @@ function renderLists(b){
   document.getElementById("doneCnt").textContent=done.length;
   const dl=document.getElementById("doneList");
   if(!done.length){dl.innerHTML='<div class="list-empty">완료한 항목이 여기에 모입니다.</div>';}
-  else dl.innerHTML=done.slice().reverse().map(t=>`<div class="item done-i">
+  else dl.innerHTML=sortManual(done.slice().reverse(),t=>t,null).map(t=>`<div class="item done-i" data-id="${t.id}">
+      ${ordHandle()}
       <span class="swatch" style="background:${prioColor(t)}"></span>
       <span class="nm">${escapeHtml(t.name)}</span>
       <span class="meta mono">${fmtMD(pd(t.start))}~${fmtMD(pd(t.end))} · 완료 ${t.doneAt||""}</span>
@@ -1624,7 +1640,8 @@ function renderRecList(){
   const list=state.recurring||[], box=document.getElementById("recList");
   document.getElementById("recCount").textContent=list.length?("("+list.length+")"):"";
   if(!list.length){box.innerHTML='<div class="rec-empty">아직 없습니다. 위에서 추가하세요.</div>';return;}
-  box.innerHTML=list.map(r=>`<div class="rec-item" data-id="${r.id}">
+  box.innerHTML=sortManual(list.slice(),r=>r,null,"rord").map(r=>`<div class="rec-item" data-id="${r.id}">
+    ${ordHandle()}
     <span class="pdot" style="background:${PRIO[r.priority||'normal']}"></span>
     <span class="swatch" style="background:${r.color}"></span>
     <span class="nm">🔁 ${escapeHtml(r.name)}</span>
@@ -2022,8 +2039,8 @@ setInterval(()=>{if(!document.hidden)gcalAutoSync();},30000);
 
 /* ==================== 마감 지난 할 일(최상단 처리 패널) ==================== */
 function renderOverTop(){
-  const over=allRealTasks().filter(t=>classify(t)==='overdue'&&matchSearch(t))
-    .sort((a,b)=>pd(a.end)-pd(b.end));   // 가장 오래 지난 건이 위로
+  const over=sortManual(allRealTasks().filter(t=>classify(t)==='overdue'&&matchSearch(t))
+    .sort((a,b)=>pd(a.end)-pd(b.end)),t=>t,null);   // 가장 오래 지난 건이 위로(수동 정렬 우선)
   const sec=document.getElementById("overTop");
   const list=document.getElementById("otList");
   document.getElementById("otCnt").textContent=over.length;
@@ -2031,7 +2048,8 @@ function renderOverTop(){
   sec.style.display="";
   list.innerHTML=over.map(t=>{
     const late=-dayDiff(today0(),pd(t.end));
-    return `<div class="ot-item">
+    return `<div class="ot-item" data-id="${t.id}">
+      ${ordHandle()}
       <span class="pdot" style="background:${PRIO[t.priority]}"></span>
       <span class="swatch" style="background:${prioColor(t)}"></span>
       <span class="nm">${escapeHtml(t.name)}</span>
@@ -2079,6 +2097,7 @@ function cardHTML(c){
   const col=PRIO[c.prio]||PRIO.normal;
   const memo=c.memo?`<div class="card-memo">${escapeHtml(c.memo)}</div>`:"";
   return `<div class="card${c.pinned?' pinned':''}" data-id="${c.id}" style="--pc:${col}">
+    ${ordHandle()}
     <span class="card-dot"></span>
     <div class="card-main"><div class="card-title">${escapeHtml(c.title||"제목 없음")}</div>${memo}</div>
     ${imgBadge("card",c.id,(c.imgs||[]).length)}
@@ -2088,8 +2107,8 @@ function cardHTML(c){
 function renderBoard(){
   ensureBoard();
   FOLDERS.forEach(f=>{
-    const cards=state.board.cards.filter(c=>c.folder===f.key)
-      .sort((a,b)=>((b.pinned?1:0)-(a.pinned?1:0))||(BORD[a.prio]??1)-(BORD[b.prio]??1)||(b.updatedAt||0)-(a.updatedAt||0));
+    const cards=sortManual(state.board.cards.filter(c=>c.folder===f.key)
+      .sort((a,b)=>((b.pinned?1:0)-(a.pinned?1:0))||(BORD[a.prio]??1)-(BORD[b.prio]??1)||(b.updatedAt||0)-(a.updatedAt||0)),c=>c,c=>!!c.pinned);
     const cnt=document.querySelector('[data-cnt="'+f.key+'"]');if(cnt)cnt.textContent=cards.length;
     const list=document.querySelector('[data-list="'+f.key+'"]');if(!list)return;
     list.innerHTML=cards.length?cards.map(cardHTML).join("")
@@ -2832,6 +2851,101 @@ window.addEventListener("pointerup",e=>{if(tDrag&&e.pointerId===tDrag.pid)endTDr
 window.addEventListener("pointercancel",e=>{if(tDrag&&e.pointerId===tDrag.pid)endTDrag(e,false);});
 window.addEventListener("dragstart",e=>{if(tDrag)e.preventDefault();});
 applyWsUI();
+
+/* ==================== 리스트 드래그 순서 변경 (상하 재정렬) ====================
+   - 각 행 왼쪽의 ⠿ 핸들을 잡고 위/아래로 끌어 순서 변경
+   - 대상: 오늘 할 일 / 마감 지난 할 일 / 지연 / 완료 목록 / 계약건 5개 폴더 / 반복 일정 목록
+   - 순서는 ord(반복목록은 rord) 필드로 저장 → 로컬 저장 + 클라우드 동기화
+   - 📌 고정 항목은 기존대로 그룹 최상단 유지, 그 안에서 순서 변경
+   - 기존 드래그(폴더 이동·파일 이동·간트 바)는 그대로 유지(핸들에서 시작한 드래그만 재정렬) */
+function ordHandle(){return '<button class="ord-h" type="button" tabindex="-1" title="드래그하여 순서 변경" aria-label="순서 변경">⠿</button>';}
+function sortManual(list,getObj,getPin,key){
+  const K=key||"ord";
+  const dec=list.map((x,i)=>{
+    const o=getObj?getObj(x):x;
+    const v=(o&&typeof o[K]==="number"&&isFinite(o[K]))?o[K]:null;
+    return {x,i,p:(getPin&&getPin(x))?0:1,o:(v===null?i:v)};
+  });
+  dec.sort((a,b)=>(a.p-b.p)||(a.o-b.o)||(a.i-b.i));
+  return dec.map(d=>d.x);
+}
+const ORD_SEL={todayGrid:".today-item",otList:".ot-item",doneList:".item",overList:".item",recList:".rec-item"};
+const ORD_CONT="#todayGrid,#otList,#doneList,#overList,#recList,.card-list";
+function ordItemSel(cont){return cont.classList.contains("card-list")?".card":(ORD_SEL[cont.id]||".item");}
+function ordApply(cont,ids){
+  if(cont.classList.contains("card-list")){
+    ensureBoard();
+    ids.forEach((id,i)=>{const c=state.board.cards.find(x=>x.id===id);if(c)c.ord=i;});   // updatedAt은 건드리지 않음
+    saveBoard();renderBoard();return;
+  }
+  if(cont.id==="recList"){
+    ids.forEach((id,i)=>{const r=(state.recurring||[]).find(x=>x.id===id);if(r)r.rord=i;});
+    save();renderRecList();render();return;
+  }
+  ids.forEach((id,i)=>{
+    const sid=String(id);
+    if(sid.indexOf("r:")===0){const r=(state.recurring||[]).find(x=>x.id===sid.slice(2));if(r)r.ord=i;}
+    else{const f=findTask(sid);if(f)f.t.ord=i;}                                          // updatedAt은 건드리지 않음
+  });
+  save();render();
+}
+let ordDrag=null;
+function ordRows(d){return Array.from(d.cont.children).filter(el=>el.matches&&el.matches(d.sel));}
+function ordPlace(e){
+  const d=ordDrag;if(!d)return;
+  const rows=ordRows(d).filter(el=>el!==d.el);
+  let before=null;
+  for(const r of rows){const b=r.getBoundingClientRect();if(e.clientY<b.top+b.height/2){before=r;break;}}
+  if(before)d.cont.insertBefore(d.ph,before);
+  else d.cont.appendChild(d.ph);
+}
+document.addEventListener("pointerdown",e=>{
+  const h=e.target.closest(".ord-h");if(!h)return;
+  if(e.button!==undefined&&e.button!==0)return;
+  const cont=h.closest(ORD_CONT);if(!cont)return;
+  const sel=ordItemSel(cont),el=h.closest(sel);
+  if(!el||el.parentElement!==cont){e.stopPropagation();e.preventDefault();return;}
+  e.stopPropagation();e.preventDefault();
+  ordDrag={cont,sel,el,h,pid:e.pointerId,x0:e.clientX,y0:e.clientY,active:false,ph:null};
+  try{h.setPointerCapture(e.pointerId);}catch(_){}
+},true);
+window.addEventListener("pointermove",e=>{
+  const d=ordDrag;if(!d||e.pointerId!==d.pid)return;
+  if(!d.active){
+    if(Math.hypot(e.clientX-d.x0,e.clientY-d.y0)<5)return;
+    d.active=true;
+    const r=d.el.getBoundingClientRect();
+    const ph=document.createElement("div");ph.className="ord-ph";ph.style.height=r.height+"px";
+    d.ph=ph;d.el.classList.add("ord-drag");document.body.classList.add("ord-sorting");
+    d.cont.insertBefore(ph,d.el.nextSibling);
+  }
+  ordPlace(e);e.preventDefault();
+},{passive:false});
+function ordEnd(e,commit){
+  const d=ordDrag;ordDrag=null;if(!d)return;
+  try{d.h.releasePointerCapture(e.pointerId);}catch(_){}
+  d.el.classList.remove("ord-drag");document.body.classList.remove("ord-sorting");
+  if(!d.active){if(d.ph&&d.ph.parentNode)d.ph.remove();return;}
+  let ids=null;
+  if(commit&&d.ph&&d.ph.parentNode===d.cont){
+    ids=[];
+    Array.from(d.cont.children).forEach(el=>{
+      if(el===d.ph){ids.push(d.el.dataset.id);return;}
+      if(el===d.el)return;
+      if(el.matches&&el.matches(d.sel)&&el.dataset.id)ids.push(el.dataset.id);
+    });
+    ids=ids.filter(Boolean);
+  }
+  if(d.ph&&d.ph.parentNode)d.ph.remove();
+  if(ids&&ids.length)ordApply(d.cont,ids);
+  else if(d.cont.id==="recList")renderRecList();
+  else render();
+}
+window.addEventListener("pointerup",e=>{if(ordDrag&&e.pointerId===ordDrag.pid)ordEnd(e,true);});
+window.addEventListener("pointercancel",e=>{if(ordDrag&&e.pointerId===ordDrag.pid)ordEnd(e,false);});
+/* 핸들 클릭이 행 클릭(편집 열기 등)으로 번지지 않도록 차단 */
+document.addEventListener("click",e=>{if(e.target.closest(".ord-h")){e.stopPropagation();e.preventDefault();}},true);
+document.addEventListener("dragstart",e=>{if(ordDrag)e.preventDefault();});
 
 render();applyView();applyFold();initSync();initGcal();restoreImgFolder();
 </script>
