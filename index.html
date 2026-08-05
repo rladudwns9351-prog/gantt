@@ -353,6 +353,12 @@
     font-weight:800;font-size:15px;color:var(--muted);box-shadow:var(--shadow);transition:.1s}
   .drop-zone .z-sub{display:block;font-size:11px;font-weight:600;margin-top:6px;opacity:.65}
   .drop-zone.hot{border-color:var(--accent);border-style:solid;background:var(--accent-soft);color:var(--accent);transform:scale(1.05)}
+  .drop-zone.ws-zone{grid-column:1 / -1;border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  #wsDropOverlay{position:fixed;inset:0;z-index:60;display:none;pointer-events:none;background:rgba(33,30,27,.38);
+    backdrop-filter:blur(1px);align-items:center;justify-content:center;padding:24px}
+  #wsDropOverlay.show{display:flex}
+  .ws-drop-inner{width:100%;max-width:440px;display:grid}
+  .drop-zone.big{padding:44px 16px;font-size:17px}
   /* ===== 업무/개인 파일 전환 버튼 (추가) ===== */
   .ws-fab{position:fixed;top:110px;left:30px;z-index:65;width:124px;min-height:92px;cursor:pointer;
     display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
@@ -368,6 +374,10 @@
   .ws-fab.ws-flash{animation:wsFlash .6s}
   @keyframes wsPulse{0%{box-shadow:0 0 0 0 var(--accent-soft)}70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
   @keyframes wsFlash{0%{box-shadow:0 0 0 4px var(--accent)}100%{box-shadow:0 0 0 0 transparent}}
+  body.ws-dragging{user-select:none;-webkit-user-select:none;cursor:grabbing}
+  body.ws-dragging *{user-select:none!important;-webkit-user-select:none!important}
+  .ot-item,.today-item,.cal-bar,#overList .item,#doneList .item{cursor:grab}
+  .ot-item button,.today-item button,#overList .item button,#doneList .item button{cursor:pointer}
   .ws-badge{display:inline-block;margin-top:8px;font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:999px;
     background:var(--accent-soft);color:var(--accent);border:1px solid var(--line-strong)}
   body.ws-personal .ws-badge{background:#e8f1fb;color:#2f6bd2;border-color:#c9ddf5}
@@ -826,6 +836,13 @@ create policy "anon_all" on schedule_sync
     <div class="drop-zone" data-zone="progress">🚗 진행건<span class="z-sub">여기에 놓기</span></div>
     <div class="drop-zone" data-zone="done">🏁 완료건<span class="z-sub">여기에 놓기</span></div>
     <div class="drop-zone" data-zone="deliver">🚚 인도완료<span class="z-sub">여기에 놓기</span></div>
+    <div class="drop-zone ws-zone" data-zone="__ws"><span id="cardWsZoneTx">🙋 개인파일로 이동</span><span class="z-sub">여기에 놓기</span></div>
+  </div>
+</div>
+
+<div id="wsDropOverlay">
+  <div class="ws-drop-inner">
+    <div class="drop-zone ws-zone big" data-zone="__ws"><span id="taskWsZoneTx">🙋 개인파일로 이동</span><span class="z-sub">여기에 놓기</span></div>
   </div>
 </div>
 
@@ -2650,6 +2667,9 @@ function applyWsUI(){
   const ic=wsBtn?wsBtn.querySelector(".ws-ic"):null;if(ic)ic.textContent=p?"🗂":"🙋";
   const bd=document.getElementById("wsBadge");if(bd)bd.textContent=p?"🙋 개인파일":"🗂 업무파일";
   document.body.classList.toggle("ws-personal",p);
+  const zt=p?"🗂 업무파일로 이동":"🙋 개인파일로 이동";
+  const z1=document.getElementById("cardWsZoneTx");if(z1)z1.textContent=zt;
+  const z2=document.getElementById("taskWsZoneTx");if(z2)z2.textContent=zt;
   if(wsBtn)wsBtn.title=p?"클릭: 업무파일로 전환 · 항목을 끌어다 놓으면 업무파일로 이동"
                         :"클릭: 개인파일로 전환 · 항목을 끌어다 놓으면 개인파일로 이동";
   document.title=(p?"개인 일정 관리":"일정 관리")+" · 달력 & 간트";
@@ -2696,6 +2716,14 @@ if(wsBtn)wsBtn.addEventListener("click",e=>{
   setWs(curWs==="work"?"personal":"work");
 });
 
+/* 헤더 뱃지 클릭으로도 전환 */
+const wsBadgeEl=document.getElementById("wsBadge");
+if(wsBadgeEl){
+  wsBadgeEl.style.cursor="pointer";
+  wsBadgeEl.title="클릭하여 업무/개인 파일 전환";
+  wsBadgeEl.addEventListener("click",()=>{if(!tDragSuppress)setWs(curWs==="work"?"personal":"work");});
+}
+
 /* 할 일 카드를 끌어다 버튼에 놓으면 이동 */
 let tDrag=null,tDragSuppress=false;
 document.addEventListener("click",e=>{
@@ -2703,45 +2731,65 @@ document.addEventListener("click",e=>{
 },true);
 function endTDrag(e,drop){
   const d=tDrag;tDrag=null;if(!d)return;
+  const hit=drop&&d.active&&inWsDrop(e);
   if(d.ghost)d.ghost.remove();
   wsTarget(false);wsHot(false);
+  const z=wsDropZone();if(z)z.classList.remove("hot");
+  if(wsDropOverlay)wsDropOverlay.classList.remove("show");
+  document.body.classList.remove("ws-dragging");
   try{d.el.releasePointerCapture(e.pointerId);}catch(_){}
   if(!d.active)return;
   tDragSuppress=true;wsClickBlock=true;
   setTimeout(()=>{tDragSuppress=false;wsClickBlock=false;},120);
-  if(drop&&inWsBtn(e)&&moveItemToOtherWs("task",d.id)){save();render();wsFlash();}
+  if(hit&&moveItemToOtherWs("task",d.id)){save();render();wsFlash();}
 }
-["otList","todayGrid","calBody"].forEach(idn=>{
+["otList","todayGrid","calBody","overList","doneList"].forEach(idn=>{
   const host=document.getElementById(idn);if(!host)return;
   host.addEventListener("pointerdown",e=>{
+    if(tDrag)return;
     if(e.button!==undefined&&e.button!==0)return;
     if(e.target.closest("button,input,textarea,select,a,[data-imgbtn]"))return;
-    const el=e.target.closest(".ot-item,.today-item,.cal-bar");if(!el)return;
+    const el=e.target.closest(".ot-item,.today-item,.cal-bar,.item");if(!el)return;
     if(el.classList.contains("recur")||el.querySelector('[data-pin="recur"]'))return;   // 반복 일정 제외
     let id=el.dataset.id;
     if(!id){const b=el.querySelector("[data-id]");id=b?b.dataset.id:null;}
     if(!id||!findTask(id))return;
     tDrag={id,el,x0:e.clientX,y0:e.clientY,active:false,ghost:null,pid:e.pointerId};
+    try{el.setPointerCapture(e.pointerId);}catch(_){}
   });
-  host.addEventListener("pointermove",e=>{
-    if(!tDrag||e.pointerId!==tDrag.pid)return;
-    if(!tDrag.active){
-      if(Math.hypot(e.clientX-tDrag.x0,e.clientY-tDrag.y0)<10)return;
-      tDrag.active=true;
-      try{tDrag.el.setPointerCapture(e.pointerId);}catch(_){}
-      const g=document.createElement("div");g.className="drag-ghost";
-      const nm=tDrag.el.querySelector(".nm,.bt");
-      g.textContent=nm?nm.textContent:"할 일";
-      document.body.appendChild(g);tDrag.ghost=g;
-      wsTarget(true);
-    }
-    tDrag.ghost.style.left=(e.clientX+14)+"px";tDrag.ghost.style.top=(e.clientY+14)+"px";
-    wsHot(inWsBtn(e));
-    e.preventDefault();
-  });
-  host.addEventListener("pointerup",e=>{if(tDrag&&e.pointerId===tDrag.pid)endTDrag(e,true);});
-  host.addEventListener("pointercancel",e=>{if(tDrag&&e.pointerId===tDrag.pid)endTDrag(e,false);});
 });
+/* 이동 추적은 window 에서 처리(항목 밖으로 나가도 끊기지 않음) */
+const wsDropOverlay=document.getElementById("wsDropOverlay");
+function wsDropZone(){return wsDropOverlay?wsDropOverlay.querySelector(".drop-zone"):null;}
+function inWsDrop(e){
+  const z=wsDropZone();
+  if(z&&wsDropOverlay.classList.contains("show")){
+    const r=z.getBoundingClientRect();
+    if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom)return true;
+  }
+  return inWsBtn(e);
+}
+window.addEventListener("pointermove",e=>{
+  if(!tDrag||e.pointerId!==tDrag.pid)return;
+  if(!tDrag.active){
+    if(Math.hypot(e.clientX-tDrag.x0,e.clientY-tDrag.y0)<8)return;
+    tDrag.active=true;
+    document.body.classList.add("ws-dragging");
+    const g=document.createElement("div");g.className="drag-ghost";
+    const nm=tDrag.el.querySelector(".nm,.bt");
+    g.textContent=nm?nm.textContent:"할 일";
+    document.body.appendChild(g);tDrag.ghost=g;
+    if(wsDropOverlay)wsDropOverlay.classList.add("show");
+    wsTarget(true);
+  }
+  tDrag.ghost.style.left=(e.clientX+14)+"px";tDrag.ghost.style.top=(e.clientY+14)+"px";
+  const hot=inWsDrop(e);
+  wsHot(hot);const z=wsDropZone();if(z)z.classList.toggle("hot",hot);
+  e.preventDefault();
+},{passive:false});
+window.addEventListener("pointerup",e=>{if(tDrag&&e.pointerId===tDrag.pid)endTDrag(e,true);});
+window.addEventListener("pointercancel",e=>{if(tDrag&&e.pointerId===tDrag.pid)endTDrag(e,false);});
+window.addEventListener("dragstart",e=>{if(tDrag)e.preventDefault();});
 applyWsUI();
 
 render();applyView();applyFold();initSync();initGcal();restoreImgFolder();
