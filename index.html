@@ -353,6 +353,31 @@
     font-weight:800;font-size:15px;color:var(--muted);box-shadow:var(--shadow);transition:.1s}
   .drop-zone .z-sub{display:block;font-size:11px;font-weight:600;margin-top:6px;opacity:.65}
   .drop-zone.hot{border-color:var(--accent);border-style:solid;background:var(--accent-soft);color:var(--accent);transform:scale(1.05)}
+  /* ===== 업무/개인 파일 전환 버튼 (추가) ===== */
+  .ws-fab{position:fixed;top:96px;right:26px;z-index:65;width:124px;min-height:92px;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    background:var(--panel);border:2px dashed var(--line-strong);border-radius:16px;padding:12px 8px;
+    font-family:inherit;color:var(--muted);box-shadow:var(--shadow);transition:.12s}
+  .ws-fab:hover{border-color:var(--accent);color:var(--accent);background:var(--accent-soft)}
+  .ws-fab .ws-ic{font-size:19px;line-height:1}
+  .ws-fab .ws-tx{font-size:14px;font-weight:800;color:var(--ink)}
+  .ws-fab:hover .ws-tx{color:var(--accent)}
+  .ws-fab .ws-sub{font-size:10px;font-weight:600;opacity:.6;line-height:1.35;text-align:center}
+  .ws-fab.ws-target{border-color:var(--accent);border-style:solid;animation:wsPulse 1s infinite}
+  .ws-fab.ws-hot{border-color:var(--accent);border-style:solid;background:var(--accent-soft);color:var(--accent);transform:scale(1.07)}
+  .ws-fab.ws-flash{animation:wsFlash .6s}
+  @keyframes wsPulse{0%{box-shadow:0 0 0 0 var(--accent-soft)}70%{box-shadow:0 0 0 10px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  @keyframes wsFlash{0%{box-shadow:0 0 0 4px var(--accent)}100%{box-shadow:0 0 0 0 transparent}}
+  .ws-badge{display:inline-block;margin-top:8px;font-size:11.5px;font-weight:800;padding:4px 10px;border-radius:999px;
+    background:var(--accent-soft);color:var(--accent);border:1px solid var(--line-strong)}
+  body.ws-personal .ws-badge{background:#e8f1fb;color:#2f6bd2;border-color:#c9ddf5}
+  body.ws-personal .title-block .dot{background:#2f6bd2}
+  body.ws-personal .ws-fab{border-color:#c9ddf5}
+  @media(max-width:1400px){
+    .ws-fab{top:auto;bottom:22px;right:18px;width:96px;min-height:74px;padding:9px 6px}
+    .ws-fab .ws-sub{display:none}
+  }
+
   .drag-ghost{position:fixed;z-index:70;pointer-events:none;background:var(--panel);border:1px solid var(--accent);
     border-left:5px solid var(--pc,var(--accent));border-radius:11px;padding:9px 13px;font-weight:700;font-size:13px;
     box-shadow:0 12px 30px -8px rgba(0,0,0,.4);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -406,6 +431,7 @@
     <div class="title-block">
       <h1><span class="dot"></span>일정 관리</h1>
       <p>달력의 날짜를 클릭해 일정 추가 · 진척도는 날짜 기준 자동 계산 · 데이터는 이 브라우저에 월별 저장</p>
+      <div class="ws-badge" id="wsBadge">🗂 업무파일</div>
     </div>
     <div class="nav">
       <button id="prev" title="이전 달">‹</button>
@@ -787,6 +813,12 @@ create policy "anon_all" on schedule_sync
   </div>
 </div>
 
+<button class="ws-fab" id="wsBtn" type="button" title="클릭: 개인파일로 전환 · 항목을 끌어다 놓으면 개인으로 이동">
+  <span class="ws-ic">🗂</span>
+  <span class="ws-tx" id="wsTxt">개인파일</span>
+  <span class="ws-sub" id="wsSub">클릭 전환<br>끌어다 놓기 = 이동</span>
+</button>
+
 <div id="dragOverlay">
   <div class="drop-zones">
     <div class="drop-zone" data-zone="req">📦 재고요청<span class="z-sub">여기에 놓기</span></div>
@@ -828,7 +860,49 @@ let cloud=loadCfg();          // {url, key} or null
 let sb=null;                  // supabase client
 let syncTimer=null, pulling=false, pushing=false;
 
-let state=load();
+/* ===== 업무/개인 파일 워크스페이스 (추가) =====
+   저장 구조: 업무 데이터는 기존 그대로 최상위(months/recurring/board),
+   개인 데이터는 state.personal 아래에 별도 보관 → 기존 데이터/백업 100% 호환 */
+const WS_KEY="activeWorkspace_v1";
+let curWs=(function(){try{return localStorage.getItem(WS_KEY)==="personal"?"personal":"work";}catch(e){return "work";}})();
+let wsOverride=null;                       // 동기 구간에서만 사용
+function wsNow(){return wsOverride||curWs;}
+function normWs(o){
+  const x=(o&&typeof o==="object")?o:{};
+  const m=(x.months&&typeof x.months==="object")?x.months:{};
+  const r=Array.isArray(x.recurring)?x.recurring:[];
+  const b=(x.board&&typeof x.board==="object")?x.board:{cards:[]};
+  if(!Array.isArray(b.cards))b.cards=[];
+  return {months:m,recurring:r,board:b};
+}
+function bindWorkspaces(raw){
+  const src=(raw&&typeof raw==="object")?raw:{};
+  const WS={work:normWs(src),personal:normWs(src.personal)};
+  const obj={};
+  for(const k in src){if(k==="months"||k==="recurring"||k==="board"||k==="personal")continue;obj[k]=src[k];}
+  if(!obj.updatedAt)obj.updatedAt=Date.now();
+  ["months","recurring","board"].forEach(k=>{
+    Object.defineProperty(obj,k,{enumerable:true,configurable:true,
+      get(){return WS[wsNow()][k];},
+      set(v){WS[wsNow()][k]=v;}});
+  });
+  Object.defineProperty(obj,"personal",{enumerable:false,configurable:true,
+    get(){return WS.personal;},set(v){WS.personal=normWs(v);}});
+  Object.defineProperty(obj,"__ws",{enumerable:false,configurable:true,writable:true,value:WS});
+  Object.defineProperty(obj,"toJSON",{enumerable:false,configurable:true,writable:true,value:function(){
+    const o={};
+    for(const k in this){if(k==="months"||k==="recurring"||k==="board")continue;o[k]=this[k];}
+    o.months=WS.work.months;o.recurring=WS.work.recurring;o.board=WS.work.board;
+    o.personal=WS.personal;
+    return o;
+  }});
+  return obj;
+}
+function wkMonths(){return state.__ws.work.months;}                       // 구글 캘린더 전용: 항상 업무 데이터
+function wkMigrate(k){const M=wkMonths(),b=M[k];if(!b||b._mig)return;const o=wsOverride;wsOverride="work";try{migrate(k);}finally{wsOverride=o;}}
+function workRealTasks(){const out=[],M=wkMonths();for(const k in M){wkMigrate(k);(M[k].tasks||[]).forEach(t=>out.push(t));}return out;}
+
+let state=bindWorkspaces(load());
 let view=initView();
 let weeksCache=[];
 let viewMode="cal";
@@ -891,7 +965,7 @@ async function cloudPull(){
     const remote=data?data.data:null;
     const rU=data?(data.updated_at||0):0, lU=state.updatedAt||0;
     if(remote&&remote.months&&rU>lU){      // 원격이 더 최신일 때만 교체
-      state=remote;saveLocalOnly();render();
+      state=bindWorkspaces(remote);saveLocalOnly();render();
     }else if(lU>rU){                        // 로컬이 더 최신이면 올림
       await cloudPush(true);
     }
@@ -1408,7 +1482,7 @@ document.getElementById("calBody").addEventListener("click",e=>{
 function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="schedule-backup-"+iso(today0())+".json";a.click();}
 function importData(file){const r=new FileReader();
-  r.onload=()=>{try{const d=JSON.parse(r.result);if(d&&d.months){if(!d.recurring)d.recurring=[];if(confirm("현재 데이터를 불러온 백업으로 교체할까요?")){state=d;save();render();}}else alert("올바른 백업 파일이 아닙니다.");}catch(_){alert("파일을 읽을 수 없습니다.");}};
+  r.onload=()=>{try{const d=JSON.parse(r.result);if(d&&d.months){if(!d.recurring)d.recurring=[];if(confirm("현재 데이터를 불러온 백업으로 교체할까요?")){state=bindWorkspaces(d);save();render();}}else alert("올바른 백업 파일이 아닙니다.");}catch(_){alert("파일을 읽을 수 없습니다.");}};
   r.readAsText(file);}
 
 /* ---------- view toggle ---------- */
@@ -1695,12 +1769,14 @@ function evDates(ev){
 }
 function bucketForDate(isoStr){
   const k=isoStr.slice(0,4)+"-"+isoStr.slice(5,7);
-  if(!state.months[k])state.months[k]={tasks:[],_mig:true};
-  migrate(k);return state.months[k];
+  const M=wkMonths();                                   // 캘린더 연동은 항상 업무 파일 기준
+  if(!M[k])M[k]={tasks:[],_mig:true};
+  wkMigrate(k);return M[k];
 }
 function findByGcal(ev){
   const pid=ev.extendedProperties&&ev.extendedProperties.private&&ev.extendedProperties.private.taskId;
-  for(const k in state.months){const arr=state.months[k].tasks||[];
+  const WM=wkMonths();
+  for(const k in WM){const arr=WM[k].tasks||[];
     for(const t of arr){if((t.gcalId&&t.gcalId===ev.id)||(pid&&t.id===pid))return {t,k};}}
   return null;
 }
@@ -1741,7 +1817,7 @@ async function gcalPull(){
     catch(e){if(e.status===410){state.gcalSyncToken=null;syncToken=null;pageToken=null;full=true;continue;}throw e;}
     for(const ev of (data.items||[])){
       if(ev.status==="cancelled"){const f=findByGcal(ev);
-        if(f){state.months[f.k].tasks=state.months[f.k].tasks.filter(x=>x!==f.t);changed=true;}continue;}
+        if(f){const WM=wkMonths();WM[f.k].tasks=WM[f.k].tasks.filter(x=>x!==f.t);changed=true;}continue;}
       const f=findByGcal(ev);
       if(f){const evUpd=Date.parse(ev.updated)||0;
         if(evUpd>(f.t.gcalUpdated||0)){
@@ -1775,7 +1851,7 @@ async function gcalPush(){
       catch(e){if(e.status!==404&&e.status!==410)throw e;}}
     state.gcalPendingDeletes=[];changed=true;
   }
-  for(const t of allRealTasks()){
+  for(const t of workRealTasks()){
     if(!validDateStr(t.start)||!validDateStr(t.end)||t.end<t.start){
       gcalBadDates.push((t.name||"제목 없음")+" ["+(t.start||"?")+"~"+(t.end||"?")+"]");
       continue;   // 날짜 깨진 항목은 건너뜀(데이터는 그대로 유지)
@@ -1811,7 +1887,7 @@ async function gcalSync(interactive){
     let changed=false;
     if(state.gcalCalUsed&&state.gcalCalUsed!==cid){   // 사용 캘린더 변경(중복 통일 등) → 매핑 초기화 후 전체 재동기화
       console.warn("[간트차트] 동기화 캘린더 변경 → 전체 재동기화:",state.gcalCalUsed,"→",cid);
-      for(const t of allRealTasks()){delete t.gcalId;delete t.gcalUpdated;}
+      for(const t of workRealTasks()){delete t.gcalId;delete t.gcalUpdated;}
       state.gcalSyncToken=null;state.gcalPendingDeletes=[];changed=true;
     }
     state.gcalCalUsed=cid;
@@ -2087,6 +2163,7 @@ function startCardDrag(e){
   const tEl=cardDrag.card.querySelector(".card-title");g.textContent=tEl?tEl.textContent:"카드";
   document.body.appendChild(g);cardDrag.ghost=g;
   dragOverlay.classList.add("show");positionGhost(e);
+  wsTarget(true);
 }
 function hitZone(e){
   let hit=null;
@@ -2095,12 +2172,15 @@ function hitZone(e){
     const inside=e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;
     z.classList.toggle("hot",inside);if(inside)hit=z.dataset.zone;
   });
+  if(!hit&&inWsBtn(e))hit="__ws";                 // 업무/개인 전환 버튼 위에 놓기
+  wsHot(hit==="__ws");
   return hit;
 }
 function cleanupDrag(){
   if(cardDrag){if(cardDrag.ghost)cardDrag.ghost.remove();if(cardDrag.card)cardDrag.card.classList.remove("dragging");}
   dragOverlay.classList.remove("show");
   document.querySelectorAll("#dragOverlay .drop-zone.hot").forEach(z=>z.classList.remove("hot"));
+  wsHot(false);wsTarget(false);
   cardDrag=null;
 }
 boardWrap.addEventListener("pointerdown",e=>{
@@ -2123,7 +2203,8 @@ boardWrap.addEventListener("pointerup",e=>{
   if(!cardDrag.active){const id=cardDrag.id;cardDrag=null;openCardEdit(id);return;}
   const id=cardDrag.id,target=cardDrag.target;
   cleanupDrag();
-  if(target){const c=state.board.cards.find(x=>x.id===id);if(c&&c.folder!==target){c.folder=target;c.updatedAt=Date.now();saveBoard();}}
+  if(target==="__ws"){if(moveItemToOtherWs("card",id)){save();render();wsFlash();return;}}
+  else if(target){const c=state.board.cards.find(x=>x.id===id);if(c&&c.folder!==target){c.folder=target;c.updatedAt=Date.now();saveBoard();}}
   renderBoard();
 });
 boardWrap.addEventListener("pointercancel",e=>{if(cardDrag&&e.pointerId===cardDrag.pid){cleanupDrag();renderBoard();}});
@@ -2553,6 +2634,115 @@ document.getElementById("imgPill").addEventListener("click",()=>{
   if(imgDirState==="need")ensureImgReady().then(()=>{imgUrlCache.clear();render();});
   else pickImgFolder();
 });
+
+/* ===================== 업무 ↔ 개인 파일 전환 / 이동 (추가) ===================== */
+const wsBtn=document.getElementById("wsBtn");
+function wsHot(on){if(wsBtn)wsBtn.classList.toggle("ws-hot",!!on);}
+function wsTarget(on){if(wsBtn)wsBtn.classList.toggle("ws-target",!!on);}
+function wsFlash(){if(!wsBtn)return;wsBtn.classList.remove("ws-flash");void wsBtn.offsetWidth;wsBtn.classList.add("ws-flash");
+  setTimeout(()=>wsBtn.classList.remove("ws-flash"),700);}
+function inWsBtn(e){if(!wsBtn)return false;const r=wsBtn.getBoundingClientRect();
+  return e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom;}
+
+function applyWsUI(){
+  const p=(curWs==="personal");
+  const tx=document.getElementById("wsTxt");if(tx)tx.textContent=p?"업무파일":"개인파일";
+  const ic=wsBtn?wsBtn.querySelector(".ws-ic"):null;if(ic)ic.textContent=p?"🗂":"🙋";
+  const bd=document.getElementById("wsBadge");if(bd)bd.textContent=p?"🙋 개인파일":"🗂 업무파일";
+  document.body.classList.toggle("ws-personal",p);
+  if(wsBtn)wsBtn.title=p?"클릭: 업무파일로 전환 · 항목을 끌어다 놓으면 업무파일로 이동"
+                        :"클릭: 개인파일로 전환 · 항목을 끌어다 놓으면 개인파일로 이동";
+  document.title=(p?"개인 일정 관리":"일정 관리")+" · 달력 & 간트";
+}
+function setWs(ws){
+  const n=(ws==="personal")?"personal":"work";
+  if(n===curWs)return;
+  curWs=n;try{localStorage.setItem(WS_KEY,curWs);}catch(e){}
+  applyWsUI();render();applyView();applyFold();
+}
+
+/* 항목을 반대편 파일로 이동 (kind: "task" | "card") */
+function moveItemToOtherWs(kind,id){
+  if(!state.__ws)return false;
+  const A=state.__ws[curWs], B=state.__ws[curWs==="work"?"personal":"work"];
+  if(!A||!B)return false;
+  if(kind==="card"){
+    if(!Array.isArray(A.board.cards))A.board.cards=[];
+    if(!Array.isArray(B.board.cards))B.board.cards=[];
+    const i=A.board.cards.findIndex(c=>c.id===id);if(i<0)return false;
+    const c=A.board.cards.splice(i,1)[0];c.updatedAt=Date.now();
+    B.board.cards.push(c);return true;
+  }
+  for(const k in A.months){
+    const arr=(A.months[k]&&A.months[k].tasks)||[];
+    const i=arr.findIndex(t=>t.id===id);if(i<0)continue;
+    const t=arr.splice(i,1)[0];
+    if(t.gcalId){try{queueGcalDelete(t.gcalId);}catch(e){}}   // 개인으로 옮기면 구글 캘린더에서 제거
+    delete t.gcalId;delete t.gcalUpdated;
+    t.updatedAt=Date.now();
+    if(!B.months[k])B.months[k]={tasks:[],_mig:true};
+    if(!Array.isArray(B.months[k].tasks))B.months[k].tasks=[];
+    B.months[k].tasks.push(t);
+    return true;
+  }
+  return false;
+}
+
+/* 클릭으로 전환 */
+let wsClickBlock=false;
+if(wsBtn)wsBtn.addEventListener("click",e=>{
+  e.preventDefault();e.stopPropagation();
+  if(wsClickBlock){wsClickBlock=false;return;}
+  setWs(curWs==="work"?"personal":"work");
+});
+
+/* 할 일 카드를 끌어다 버튼에 놓으면 이동 */
+let tDrag=null,tDragSuppress=false;
+document.addEventListener("click",e=>{
+  if(tDragSuppress){e.stopPropagation();e.preventDefault();tDragSuppress=false;}
+},true);
+function endTDrag(e,drop){
+  const d=tDrag;tDrag=null;if(!d)return;
+  if(d.ghost)d.ghost.remove();
+  wsTarget(false);wsHot(false);
+  try{d.el.releasePointerCapture(e.pointerId);}catch(_){}
+  if(!d.active)return;
+  tDragSuppress=true;wsClickBlock=true;
+  setTimeout(()=>{tDragSuppress=false;wsClickBlock=false;},120);
+  if(drop&&inWsBtn(e)&&moveItemToOtherWs("task",d.id)){save();render();wsFlash();}
+}
+["otList","todayGrid","calBody"].forEach(idn=>{
+  const host=document.getElementById(idn);if(!host)return;
+  host.addEventListener("pointerdown",e=>{
+    if(e.button!==undefined&&e.button!==0)return;
+    if(e.target.closest("button,input,textarea,select,a,[data-imgbtn]"))return;
+    const el=e.target.closest(".ot-item,.today-item,.cal-bar");if(!el)return;
+    if(el.classList.contains("recur")||el.querySelector('[data-pin="recur"]'))return;   // 반복 일정 제외
+    let id=el.dataset.id;
+    if(!id){const b=el.querySelector("[data-id]");id=b?b.dataset.id:null;}
+    if(!id||!findTask(id))return;
+    tDrag={id,el,x0:e.clientX,y0:e.clientY,active:false,ghost:null,pid:e.pointerId};
+  });
+  host.addEventListener("pointermove",e=>{
+    if(!tDrag||e.pointerId!==tDrag.pid)return;
+    if(!tDrag.active){
+      if(Math.hypot(e.clientX-tDrag.x0,e.clientY-tDrag.y0)<10)return;
+      tDrag.active=true;
+      try{tDrag.el.setPointerCapture(e.pointerId);}catch(_){}
+      const g=document.createElement("div");g.className="drag-ghost";
+      const nm=tDrag.el.querySelector(".nm,.bt");
+      g.textContent=nm?nm.textContent:"할 일";
+      document.body.appendChild(g);tDrag.ghost=g;
+      wsTarget(true);
+    }
+    tDrag.ghost.style.left=(e.clientX+14)+"px";tDrag.ghost.style.top=(e.clientY+14)+"px";
+    wsHot(inWsBtn(e));
+    e.preventDefault();
+  });
+  host.addEventListener("pointerup",e=>{if(tDrag&&e.pointerId===tDrag.pid)endTDrag(e,true);});
+  host.addEventListener("pointercancel",e=>{if(tDrag&&e.pointerId===tDrag.pid)endTDrag(e,false);});
+});
+applyWsUI();
 
 render();applyView();applyFold();initSync();initGcal();restoreImgFolder();
 </script>
