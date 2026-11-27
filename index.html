@@ -217,6 +217,8 @@
   .reset-btn{border:none;background:var(--over);color:#fff;font-weight:700;font-size:12px;padding:7px 12px;border-radius:9px;cursor:pointer;display:flex;align-items:center;gap:5px;transition:.15s;box-shadow:0 1px 4px rgba(210,59,47,.35)}
   .reset-btn:hover{background:#b32a20}
   .list-empty{color:var(--muted);font-size:13px;padding:8px 2px}
+  .done-sec.collapsed #doneList{display:none}
+  .done-sec:not(.collapsed) #doneChev{transform:rotate(90deg)}
 
   /* modal */
   .mask{position:fixed;inset:0;background:rgba(33,30,27,.42);backdrop-filter:blur(2px);display:none;align-items:center;justify-content:center;z-index:50;padding:20px}
@@ -474,12 +476,13 @@
     </div>
     <input class="search" id="search" type="text" placeholder="할 일 검색…">
     <input type="file" id="importFile" accept="application/json">
-    <button class="sync-pill none" id="syncPill" title="클라우드 동기화 설정"><span class="sdot"></span><span id="syncTxt">동기화 꺼짐</span></button>
+    <button class="sync-pill none" id="syncPill" title="클라우드 동기화 설정" style="display:none"><span class="sdot"></span><span id="syncTxt">동기화 꺼짐</span></button>
     <button class="sync-pill none" id="gcalPill" title="구글 캘린더 양방향 연동"><span class="sdot"></span><span id="gcalTxt">📅 캘린더 꺼짐</span></button>
     <button class="sync-pill none" id="imgPill" title="이미지 저장 폴더(USB) 연결"><span class="sdot"></span><span id="imgTxt">🖼 이미지 폴더 미연결</span></button>
+    <button class="sync-pill none" id="histPill" title="데이터 보호 · 저장 이력에서 복원" style="display:none"><span class="sdot"></span><span id="histTxt">🛟 복원</span></button>
     <button class="btn ghost" id="recBtn">🔁 반복</button>
     <button class="btn ghost" id="importBtn">불러오기</button>
-    <button class="btn ghost" id="exportBtn">내보내기</button>
+    <button class="btn ghost" id="exportBtn" title="USB 폴더에 전체 데이터 저장">💾 저장하기</button>
     <button class="btn primary" id="addBtn">+ 할 일 추가</button>
   </div>
 
@@ -565,7 +568,7 @@
   </section>
 
   <section class="sec done-sec">
-    <h2>완료 목록 <span class="cnt" id="doneCnt">0</span></h2>
+    <h2 id="doneHead" style="cursor:pointer;user-select:none" title="클릭하여 접기/펼치기"><span class="fh-chev" id="doneChev">▸</span>완료 목록 <span class="cnt" id="doneCnt">0</span><span id="doneNote" style="font-size:11.5px;font-weight:600;color:var(--muted)"></span></h2>
     <div class="list" id="doneList"></div>
   </section>
 </div>
@@ -839,6 +842,24 @@ create policy "anon_all" on schedule_sync
   </div>
 </div>
 
+<div class="mask" id="histMask">
+  <div class="modal" style="max-width:560px">
+    <h3>🛟 데이터 보호 · 복원</h3>
+    <div class="set-stat none" id="histStat">확인 중…</div>
+    <div class="set-help" id="histInfo"></div>
+    <div class="modal-acts" style="margin-top:0;margin-bottom:14px">
+      <button class="btn" id="histPullBtn">☁ 클라우드 데이터 불러오기</button>
+      <button class="btn" id="histForceBtn">⬆ 이 PC 데이터로 클라우드 덮어쓰기</button>
+    </div>
+    <div class="rec-list-title">저장 이력 (클라우드 자동 보관) <span id="histCount"></span></div>
+    <div id="histList" class="rec-list" style="max-height:300px"></div>
+    <div class="modal-acts">
+      <button class="btn ghost" id="histClose">닫기</button>
+    </div>
+    <div class="hint">이력은 클라우드가 자동으로 보관합니다(약 30분 간격 + 데이터가 줄어드는 저장 직전). 복원 전 현재 데이터는 파일로 자동 내려받습니다.</div>
+  </div>
+</div>
+
 <div class="ws-fabs" id="wsFabs"></div>
 
 <div id="dragOverlay">
@@ -888,6 +909,7 @@ const FIXED_CLOUD={
 };
 const TABLE="schedule_sync", ROW_ID="main";
 let cloud=loadCfg();          // {url, key} or null
+cloud=null;                   // ★ 클라우드(Supabase) 사용 안 함 — 데이터는 이 PC와 USB에만 저장
 let sb=null;                  // supabase client
 let syncTimer=null, pulling=false, pushing=false;
 
@@ -939,6 +961,52 @@ function wkMigrate(k){const M=wkMonths(),b=M[k];if(!b||b._mig)return;const o=wsO
 function workRealTasks(){const out=[],M=wkMonths();for(const k in M){wkMigrate(k);(M[k].tasks||[]).forEach(t=>out.push(t));}return out;}
 
 let state=bindWorkspaces(load());
+/* ===== 데이터 보호 (추가) =====
+   - 빈 브라우저(새 PC·저장소 초기화)가 클라우드를 빈 데이터로 덮어쓰지 못하게 차단
+   - 클라우드보다 데이터가 크게 줄어든 상태는 자동 업로드 보류 후 확인
+   - 클라우드 확인 전에는 구글 캘린더 연동이 먼저 돌지 않도록 대기 */
+function dataStats(d){
+  const out={tasks:0,cards:0,rec:0,total:0};
+  if(!d||typeof d!=="object")return out;
+  const list=d.__ws?[d.__ws.work,d.__ws.personal,d.__ws.ad]:[d,d.personal,d.ad];
+  list.forEach(w=>{
+    if(!w||typeof w!=="object")return;
+    const m=w.months;
+    if(m&&typeof m==="object"){for(const k in m){const b=m[k];if(!b||typeof b!=="object")continue;
+      if(Array.isArray(b.tasks))out.tasks+=b.tasks.length;
+      if(Array.isArray(b.completed))out.tasks+=b.completed.length;}}
+    if(w.board&&Array.isArray(w.board.cards))out.cards+=w.board.cards.length;
+    if(Array.isArray(w.recurring))out.rec+=w.recurring.length;
+  });
+  out.total=out.tasks+out.cards+out.rec;
+  return out;
+}
+function statsTxt(s){return s?("일정 "+s.tasks+" · 카드 "+s.cards+" · 반복 "+s.rec):"없음";}
+/* 로컬(l)이 클라우드(r)보다 의심스럽게 줄었으면 사유 문자열, 아니면 "" */
+function shrinkWhy(l,r){
+  if(!r||!r.total)return "";
+  const why=[];
+  if((r.cards>=2&&l.cards===0)||r.cards-l.cards>=5)why.push("카드 "+r.cards+"→"+l.cards);
+  if((r.rec>=2&&l.rec===0)||r.rec-l.rec>=5)why.push("반복 "+r.rec+"→"+l.rec);
+  if((r.tasks>=2&&l.tasks===0)||r.tasks-l.tasks>=20)why.push("일정 "+r.tasks+"→"+l.tasks);
+  return why.join(", ");
+}
+/* a가 b에 비해 '통째로 사라진' 수준이면 사유 문자열(종류 하나가 전부 0이 됐거나 전체가 절반 미만) */
+function wipeWhy(a,b){
+  if(!b||!b.total)return "";
+  const why=[];
+  if(b.cards>=2&&a.cards===0)why.push("카드 "+b.cards+"→0");
+  if(b.rec>=2&&a.rec===0)why.push("반복 "+b.rec+"→0");
+  if(b.tasks>=2&&a.tasks===0)why.push("일정 "+b.tasks+"→0");
+  if(!why.length&&b.total>=10&&a.total<b.total*0.5)why.push("전체 "+b.total+"→"+a.total);
+  return why.join(", ");
+}
+let cloudOk=false;            // 클라우드 조회 1회 이상 성공
+let cloudFirstDone=false;     // 첫 조회 시도 종료(성공/실패 무관)
+let cloudForce=false;         // 사용자가 명시적으로 덮어쓰기를 선택(불러오기·복원·강제저장)
+let cloudHold=null;           // {why,l,r} 업로드 보류 상태
+let cloudAsked=false;         // 보류 확인창 1회만
+let lastRemoteStats=null;     // 마지막으로 확인한 클라우드 데이터 규모
 let view=initView();
 let weeksCache=[];
 let viewMode="cal";
@@ -990,34 +1058,90 @@ function client(){
   return sb;
 }
 
+function cloudAdopt(remote){      // 클라우드 데이터를 이 PC에 반영
+  state=bindWorkspaces(remote);saveLocalOnly();render();
+  cloudHold=null;cloudAsked=false;
+}
+function cloudHoldMsg(h){
+  if(h.dir==="pull")return "⚠ 데이터 보호\n\n클라우드의 데이터가 이 PC보다 크게 적습니다. ("+h.why+")\n다른 기기에서 데이터가 지워진 채 올라왔을 수 있습니다.\n\n"
+    +"· 클라우드: "+statsTxt(h.r)+"\n· 이 PC: "+statsTxt(h.l)+"\n\n"
+    +"[확인] 이 PC 데이터를 유지하고 클라우드에 다시 올리기 (권장)\n"
+    +"[취소] 그대로 두기 — 받지도 올리지도 않고 보류";
+  return "⚠ 데이터 보호\n\n이 PC의 데이터가 클라우드보다 크게 적습니다. ("+h.why+")\n\n"
+    +"· 클라우드: "+statsTxt(h.r)+"\n· 이 PC: "+statsTxt(h.l)+"\n\n"
+    +"[확인] 클라우드 데이터를 이 PC로 불러오기 (권장)\n"
+    +"[취소] 그대로 두기 — 클라우드에 올리지 않고 보류";
+}
+function cloudFirstAttempt(){     // 첫 클라우드 확인이 끝나면 대기 중이던 캘린더 연동 시작
+  if(cloudFirstDone)return;
+  cloudFirstDone=true;
+  try{if(typeof initGcal==="function")initGcal();}catch(e){}
+}
+function cloudDoneUI(){
+  if(cloudHold)setSyncUI("warn","⚠ 저장 보류 — 🛟 확인");
+  else setSyncUI("ok","동기화됨 "+nowHM());
+  if(typeof updateHistPill==="function")updateHistPill();
+}
 async function cloudPull(){
   if(!cloud||pulling)return;
   const c=client();
-  if(!c){setSyncUI("off",syncErr());return;}
+  if(!c){setSyncUI("off",syncErr());cloudFirstAttempt();return;}
   pulling=true;setSyncUI("busy","불러오는 중…");
   try{
     const {data,error}=await c.from(TABLE).select("data,updated_at").eq("id",ROW_ID).maybeSingle();
     if(error)throw error;
+    cloudOk=true;
     const remote=data?data.data:null;
     const rU=data?(data.updated_at||0):0, lU=state.updatedAt||0;
-    if(remote&&remote.months&&rU>lU){      // 원격이 더 최신일 때만 교체
-      state=bindWorkspaces(remote);saveLocalOnly();render();
-    }else if(lU>rU){                        // 로컬이 더 최신이면 올림
-      await cloudPush(true);
-    }
-    setSyncUI("ok","동기화됨 "+nowHM());
+    const hasRemote=!!(remote&&remote.months);
+    const rS=hasRemote?dataStats(remote):null, lS=dataStats(state);
+    lastRemoteStats=rS;
+    if(hasRemote&&(rU>lU||(lS.total===0&&rS.total>0))){   // 원격이 더 최신이거나, 이 PC가 비어 있으면 원격을 받음
+      const wipe=cloudForce?"":wipeWhy(rS,lS);              // 단, 원격이 통째로 사라진 수준이면 받지 않고 확인
+      if(wipe){
+        cloudHold={why:wipe,l:lS,r:rS,dir:"pull"};
+        if(!cloudAsked&&!document.hidden){
+          cloudAsked=true;
+          if(confirm(cloudHoldMsg(cloudHold))){
+            cloudForce=true;cloudHold=null;
+            state.updatedAt=Date.now();saveLocalOnly();
+            await cloudPush(true);
+          }
+        }
+      }else cloudAdopt(remote);
+    }else if(lU>rU){                                       // 로컬이 더 최신이면 올림(단, 크게 줄었으면 보류)
+      const why=cloudForce?"":shrinkWhy(lS,rS);
+      if(why){
+        cloudHold={why:why,l:lS,r:rS};
+        if(!cloudAsked&&!document.hidden){
+          cloudAsked=true;
+          if(confirm(cloudHoldMsg(cloudHold)))cloudAdopt(remote);
+        }
+      }else{
+        cloudHold=null;
+        await cloudPush(true);
+      }
+    }else{cloudHold=null;}
+    cloudDoneUI();
   }catch(e){setSyncUI("off",syncErr(e));}
-  finally{pulling=false;}
+  finally{pulling=false;cloudFirstAttempt();}
 }
 async function cloudPush(silent){
   if(!cloud||pushing)return;
   const c=client();
   if(!c){setSyncUI("off",syncErr());return;}
+  if(!cloudForce){
+    if(!cloudOk){if(!pulling)cloudPull();return;}                 // 클라우드를 한 번도 못 읽었으면 올리지 않음
+    if(cloudHold){cloudDoneUI();return;}                           // 보류 중
+    if(!pulling&&shrinkWhy(dataStats(state),lastRemoteStats)){cloudPull();return;}   // 크게 줄었으면 최신 클라우드와 다시 비교
+  }
   pushing=true;if(!silent)setSyncUI("busy","저장 중…");
   try{
     const {error}=await c.from(TABLE).upsert({id:ROW_ID,data:state,updated_at:state.updatedAt});
     if(error)throw error;
-    setSyncUI("ok","동기화됨 "+nowHM());
+    cloudOk=true;cloudForce=false;cloudHold=null;cloudAsked=false;
+    lastRemoteStats=dataStats(state);
+    cloudDoneUI();
   }catch(e){setSyncUI("off",syncErr(e));}
   finally{pushing=false;}
 }
@@ -1360,6 +1484,16 @@ function attachDrag(bar,t,N){
   bar.addEventListener("pointerup",up);bar.addEventListener("pointercancel",up);
 }
 
+/* 완료 목록 표시 제한(추가): 종료일이 최근인 100개만 화면에 표시 — 삭제하지 않음(데이터·휴대폰 캘린더 그대로) */
+const DONE_SHOW_MAX=100;
+function doneRecent(done){
+  const note=document.getElementById("doneNote");
+  if(done.length<=DONE_SHOW_MAX){if(note)note.textContent="";return done;}
+  const keep=new Set(done.slice().sort((a,b)=>(a.end<b.end?1:a.end>b.end?-1:0)||((b.updatedAt||0)-(a.updatedAt||0)))
+    .slice(0,DONE_SHOW_MAX).map(t=>t.id));
+  if(note)note.textContent="최근 "+DONE_SHOW_MAX+"개만 표시"+(searchTerm?" (검색 결과 중)":" · 이전 항목은 위 검색창에서 검색");
+  return done.filter(t=>keep.has(t.id));
+}
 /* lists */
 function renderLists(b){
   const all=allRealTasks();
@@ -1387,7 +1521,7 @@ function renderLists(b){
   document.getElementById("doneCnt").textContent=done.length;
   const dl=document.getElementById("doneList");
   if(!done.length){dl.innerHTML='<div class="list-empty">완료한 항목이 여기에 모입니다.</div>';}
-  else dl.innerHTML=sortManual(done.slice().reverse(),t=>t,null).map(t=>`<div class="item done-i" data-id="${t.id}">
+  else dl.innerHTML=sortManual(doneRecent(done).slice().reverse(),t=>t,null).map(t=>`<div class="item done-i" data-id="${t.id}">
       ${ordHandle()}
       <span class="swatch" style="background:${prioColor(t)}"></span>
       <span class="nm">${escapeHtml(t.name)}</span>
@@ -1523,7 +1657,7 @@ document.getElementById("calBody").addEventListener("click",e=>{
 function exportData(){const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="schedule-backup-"+iso(today0())+".json";a.click();}
 function importData(file){const r=new FileReader();
-  r.onload=()=>{try{const d=JSON.parse(r.result);if(d&&d.months){if(!d.recurring)d.recurring=[];if(confirm("현재 데이터를 불러온 백업으로 교체할까요?")){state=bindWorkspaces(d);save();render();}}else alert("올바른 백업 파일이 아닙니다.");}catch(_){alert("파일을 읽을 수 없습니다.");}};
+  r.onload=()=>{try{const d=JSON.parse(r.result);if(d&&d.months){if(!d.recurring)d.recurring=[];if(confirm("현재 데이터를 불러온 백업으로 교체할까요?")){state=bindWorkspaces(d);cloudForce=true;cloudHold=null;save();render();}}else alert("올바른 백업 파일이 아닙니다.");}catch(_){alert("파일을 읽을 수 없습니다.");}};
   r.readAsText(file);}
 
 /* ---------- view toggle ---------- */
@@ -1919,6 +2053,9 @@ async function gcalPush(){
 /* ---- 동기화 사이클 ---- */
 async function gcalSync(interactive){
   if(!gcalConfigured()||gcalBusy)return;
+  if(cloud&&(!cloudFirstDone||(!cloudOk&&dataStats(state).total===0))){   // 클라우드 확인 전에는 캘린더가 빈 데이터를 채워 올리지 못하게 대기
+    setGcalUI("busy","📅 클라우드 확인 대기…");return;
+  }
   if(location.protocol==="file:"){setGcalUI("off","📅 https에서만 작동");return;}
   gcalBusy=true;setGcalUI("busy","📅 동기화 중…");
   const _tok0=state.gcalSyncToken,_cal0=state.gcalCalUsed;
@@ -2132,12 +2269,13 @@ const cardMask=document.getElementById("cardMask");
 let cardEditing=null,cardPrio="normal",cardFolder="req",cardPin=false;
 function selCpin(){const b=document.getElementById("cPin");if(b)b.classList.toggle("sel",!!cardPin);}
 function selCseg(seg,attr,val){document.querySelectorAll("#"+seg+" .pbtn").forEach(x=>x.classList.toggle("sel",x.dataset[attr]===val));}
+const CARD_MEMO_TPL="[ 발주 ]\n인수자 : \n연락처 : \n탁송지 : \n썬팅농도 : \n블박장착여부 : \n\n보험가입증명서\n인도일자\n용품오더\n취득원가 : ";   // 새 카드 메모 기본 양식
 function openCardAdd(folder){
   cardEditing=null;cardPrio="normal";cardFolder=folder||"req";cardPin=false;
   imgUnbind();document.getElementById("cImgSec").style.display="none";
   document.getElementById("cardMTitle").textContent="카드 추가";
   document.getElementById("cName").value="";
-  document.getElementById("cMemo").value="";
+  document.getElementById("cMemo").value=CARD_MEMO_TPL;
   document.getElementById("cDel").style.display="none";
   selCseg("cPrioSeg","p",cardPrio);selCseg("cFolderSeg","f",cardFolder);selCpin();
   cardMask.classList.add("show");
@@ -2947,7 +3085,404 @@ window.addEventListener("pointercancel",e=>{if(ordDrag&&e.pointerId===ordDrag.pi
 document.addEventListener("click",e=>{if(e.target.closest(".ord-h")){e.stopPropagation();e.preventDefault();}},true);
 document.addEventListener("dragstart",e=>{if(ordDrag)e.preventDefault();});
 
-render();applyView();applyFold();initSync();initGcal();restoreImgFolder();
+/* ==================== 데이터 보호 · 저장 이력 복원 (추가) ====================
+   - 이력은 Supabase 트리거가 schedule_history 테이블에 자동 보관(브라우저는 조회만)
+   - 복원/불러오기/덮어쓰기는 모두 사용자가 버튼을 눌렀을 때만 실행 */
+const HIST_TABLE="schedule_history";
+const histMask=document.getElementById("histMask");
+function updateHistPill(){
+  const p=document.getElementById("histPill"),t=document.getElementById("histTxt");if(!p||!t)return;
+  p.className="sync-pill "+(cloudHold?"warn":"none");
+  t.textContent=cloudHold?"🛟 저장 보류 확인":"🛟 복원";
+}
+function histFmt(iso8601){const d=new Date(iso8601);if(isNaN(d))return "—";
+  const z=n=>String(n).padStart(2,"0");
+  return d.getFullYear()+"."+z(d.getMonth()+1)+"."+z(d.getDate())+" "+z(d.getHours())+":"+z(d.getMinutes());}
+function refreshHistInfo(){
+  const st=document.getElementById("histStat"),info=document.getElementById("histInfo");
+  const lS=dataStats(state);
+  if(!cloud){st.className="set-stat none";st.textContent="클라우드 동기화가 꺼져 있습니다.";}
+  else if(cloudHold){st.className="set-stat off";st.textContent="⚠ 저장 보류 중 — "+cloudHold.why;}
+  else if(cloudOk){st.className="set-stat ok";st.textContent="정상 — 클라우드와 동기화 중";}
+  else{st.className="set-stat off";st.textContent="클라우드에 아직 연결되지 않았습니다.";}
+  info.innerHTML="<b>이 PC</b>: "+statsTxt(lS)+"<br><b>클라우드</b>: "+(lastRemoteStats?statsTxt(lastRemoteStats):"확인 전");
+}
+async function loadHist(){
+  const box=document.getElementById("histList"),cnt=document.getElementById("histCount");
+  cnt.textContent="";
+  const c=client();
+  if(!c){box.innerHTML='<div class="rec-empty">클라우드에 연결되어 있지 않습니다.</div>';return;}
+  box.innerHTML='<div class="rec-empty">불러오는 중…</div>';
+  try{
+    const {data,error}=await c.from(HIST_TABLE).select("hid,saved_at,tasks,cards,recurring,reason")
+      .eq("row_id",ROW_ID).order("saved_at",{ascending:false}).limit(200);
+    if(error)throw error;
+    const rows=data||[];
+    cnt.textContent=rows.length?("("+rows.length+")"):"";
+    if(!rows.length){box.innerHTML='<div class="rec-empty">아직 보관된 이력이 없습니다. 저장이 이루어지면 자동으로 쌓입니다.</div>';return;}
+    box.innerHTML=rows.map(r=>`<div class="rec-item" data-hid="${r.hid}">
+      <span class="nm">${histFmt(r.saved_at)}${r.reason==="shrink"?" ⚠ 줄어들기 직전":""}</span>
+      <span class="desc">일정 ${r.tasks??"?"} · 카드 ${r.cards??"?"} · 반복 ${r.recurring??"?"}</span></div>`).join("");
+  }catch(e){
+    box.innerHTML='<div class="rec-empty">이력을 불러오지 못했습니다 — Supabase에 이력 테이블(SQL)이 설치됐는지 확인하세요.<br>'+escapeHtml((e&&e.message)||String(e))+'</div>';
+  }
+}
+function openHist(){refreshHistInfo();histMask.classList.add("show");loadHist();
+  if(cloud&&!pulling)cloudPull().then(refreshHistInfo);}
+function closeHist(){histMask.classList.remove("show");}
+async function restoreHist(hid){
+  const c=client();if(!c)return;
+  try{
+    const {data,error}=await c.from(HIST_TABLE).select("data,saved_at").eq("hid",hid).maybeSingle();
+    if(error)throw error;
+    const d=data&&data.data;
+    if(!d||!d.months){alert("이 이력은 복원할 수 없습니다.");return;}
+    if(!confirm("이 시점으로 복원할까요?\n\n· 복원 시점: "+histFmt(data.saved_at)+"\n· 복원 데이터: "+statsTxt(dataStats(d))
+      +"\n· 현재 데이터: "+statsTxt(dataStats(state))+"\n\n현재 데이터는 먼저 파일로 내려받은 뒤 교체합니다."))return;
+    try{exportData();}catch(_){}
+    if(!d.recurring)d.recurring=[];
+    state=bindWorkspaces(d);cloudForce=true;cloudHold=null;
+    save();render();closeHist();
+  }catch(e){alert("복원 실패: "+((e&&e.message)||e));}
+}
+async function histPullNow(){       // 클라우드 데이터를 이 PC로 강제 반영
+  const c=client();if(!c){alert("클라우드에 연결되어 있지 않습니다.");return;}
+  try{
+    const {data,error}=await c.from(TABLE).select("data,updated_at").eq("id",ROW_ID).maybeSingle();
+    if(error)throw error;
+    const remote=data?data.data:null;
+    if(!remote||!remote.months){alert("클라우드에 저장된 데이터가 없습니다.");return;}
+    if(!confirm("클라우드 데이터를 이 PC로 불러올까요?\n\n· 클라우드: "+statsTxt(dataStats(remote))+"\n· 이 PC: "+statsTxt(dataStats(state))
+      +"\n\n이 PC의 현재 데이터는 먼저 파일로 내려받은 뒤 교체합니다."))return;
+    try{exportData();}catch(_){}
+    cloudOk=true;lastRemoteStats=dataStats(remote);
+    cloudAdopt(remote);cloudDoneUI();refreshHistInfo();
+  }catch(e){alert("불러오기 실패: "+((e&&e.message)||e));}
+}
+async function histForcePush(){     // 이 PC 데이터로 클라우드를 명시적으로 덮어씀(직전 클라우드 데이터는 이력에 보관됨)
+  if(!cloud){alert("클라우드 동기화가 꺼져 있습니다.");return;}
+  if(!confirm("이 PC 데이터로 클라우드를 덮어쓸까요?\n\n· 이 PC: "+statsTxt(dataStats(state))+"\n· 클라우드: "+(lastRemoteStats?statsTxt(lastRemoteStats):"확인 전")
+    +"\n\n덮어쓰기 직전의 클라우드 데이터는 저장 이력에 남습니다."))return;
+  cloudForce=true;cloudHold=null;
+  state.updatedAt=Date.now();saveLocalOnly();
+  await cloudPush(false);refreshHistInfo();loadHist();
+}
+document.getElementById("histPill").onclick=openHist;
+document.getElementById("histClose").onclick=closeHist;
+document.getElementById("histPullBtn").onclick=histPullNow;
+document.getElementById("histForceBtn").onclick=histForcePush;
+document.getElementById("histList").addEventListener("click",e=>{const it=e.target.closest(".rec-item");if(it&&it.dataset.hid)restoreHist(it.dataset.hid);});
+histMask.addEventListener("click",e=>{if(e.target===histMask)closeHist();});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&histMask.classList.contains("show"))closeHist();});
+
+/* ==================== USB 저장 (추가) ====================
+   - 「💾 저장하기」: 선택한 USB 폴더에 전체 데이터(업무·개인·광고·카드·반복)를 gantt_data.json 으로 저장
+   - 폴더가 연결돼 있으면 변경 후 자동 저장 + 날짜별 백업(간트차트_백업 폴더, 60일 보관)
+   - 저장본이 더 많거나 최신이면 덮어쓰지 않고 확인
+   - PC 크롬/엣지 전용. 미지원 브라우저에서는 기존처럼 파일 내려받기 */
+const USB_FILE="gantt_data.json", USB_BAK_DIR="간트차트_백업", USB_KEEP_DAYS=60, USB_DIR_NAME="1.1간트차트";
+let usbDir=null, usbState="none";      // none | need | ready | unsupported
+let usbDirty=false, usbSeq=0, usbTimer=null, usbBusy=false, usbLastSaved=0, usbHoldWhy="", usbBroken=false;
+const USB_REV_KEY="usbLastRev_v1";       // 이 PC가 마지막으로 저장/불러온 USB 저장본 표식
+let usbChecked=false, usbKeepLocal=false;
+function usbMyRev(){try{return localStorage.getItem(USB_REV_KEY)||"";}catch(_){return "";}}
+function usbSetRev(r){try{localStorage.setItem(USB_REV_KEY,r);}catch(_){}}
+function usbTime(ms){if(!ms)return "—";const d=new Date(ms),z=n=>String(n).padStart(2,"0");
+  return (d.getMonth()+1)+"/"+d.getDate()+" "+z(d.getHours())+":"+z(d.getMinutes());}
+function usbSupported(){return !!window.showDirectoryPicker;}
+function usbUI(){
+  const b=document.getElementById("exportBtn");if(!b)return;
+  let t="💾 저장하기",c="";
+  if(usbSupported()){
+    if(usbHoldWhy){t="💾 저장 보류 ⚠";c="var(--over)";}
+    else if(usbDirty){t="💾 저장하기 ●";c="var(--accent)";}
+    else if(usbLastSaved){const d=new Date(usbLastSaved);t="💾 저장됨 "+String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");c="var(--done)";}
+    b.title=usbState==="ready"?("USB 저장 폴더: "+(usbDir&&usbDir.name?usbDir.name:"연결됨")+(usbHoldWhy?" · 자동 저장 보류: "+usbHoldWhy+" (눌러서 확인)":" · 변경 시 자동 저장"))
+      :usbState==="need"?"USB 폴더 승인이 필요합니다 — 눌러서 저장"
+      :"눌러서 USB 저장 폴더 선택 (USB 드라이브 → 코딩작업 모음 ★★★ → "+USB_DIR_NAME+")";
+  }
+  b.textContent=t;b.style.color=c;
+}
+async function usbReadFile(dir,name){try{const fh=await dir.getFileHandle(name);const f=await fh.getFile();return await f.text();}catch(e){return null;}}
+async function usbWriteFile(dir,name,text){const fh=await dir.getFileHandle(name,{create:true});const w=await fh.createWritable();await w.write(text);await w.close();}
+async function usbPick(){
+  if(!usbSupported())return false;
+  let h=null;
+  try{h=await window.showDirectoryPicker({id:"ganttDataDir",mode:"readwrite"});}catch(_){return false;}
+  if(h.name!==USB_DIR_NAME&&!confirm("선택한 폴더: 「"+h.name+"」\n\n권장 폴더는 USB의 「"+USB_DIR_NAME+"」 입니다.\n이 폴더에 저장할까요?"))return false;
+  usbDir=h;usbState="ready";usbBroken=false;usbChecked=false;usbKeepLocal=false;
+  try{await idbPut("dataDir",h);}catch(_){}
+  usbUI();return true;
+}
+async function usbEnsure(interactive){
+  if(!usbSupported()){usbState="unsupported";return false;}
+  if(!usbDir)return interactive?await usbPick():false;
+  try{
+    let p=await usbDir.queryPermission({mode:"readwrite"});
+    if(p!=="granted"&&interactive)p=await usbDir.requestPermission({mode:"readwrite"});
+    if(p==="granted"){usbState="ready";usbUI();return true;}
+  }catch(_){}
+  usbState="need";usbUI();return false;
+}
+function usbStamp(){const d=new Date(),z=n=>String(n).padStart(2,"0");
+  return iso(d)+"_"+z(d.getHours())+z(d.getMinutes())+z(d.getSeconds());}
+async function usbSave(manual){
+  if(usbBusy)return false;
+  if(!usbSupported()){if(manual)exportData();return false;}
+  if(manual&&usbBroken){if(!(await usbPick()))return false;}
+  if(!(await usbEnsure(manual)))return false;
+  if(!usbChecked){await usbCheckNewer();if(!usbChecked){if(manual)alert("USB 폴더에 접근할 수 없습니다.\nUSB가 꽂혀 있는지 확인한 뒤 「💾 저장하기」를 다시 눌러 폴더를 선택하세요.");return false;}}
+  usbBusy=true;
+  const seq0=usbSeq;
+  try{
+    const lS=dataStats(state);
+    const oldTxt=await usbReadFile(usbDir,USB_FILE);
+    let old=null;if(oldTxt){try{old=JSON.parse(oldTxt);}catch(_){old=null;}}
+    if(old&&old.months){
+      const oS=dataStats(old);
+      const why=wipeWhy(lS,oS);
+      const other=!usbKeepLocal&&!!old._usbRev&&old._usbRev!==usbMyRev();          // 다른 PC에서 저장된 파일
+      const newer=other||(!usbKeepLocal&&(old.updatedAt||0)>(state.updatedAt||0)+1000);
+      if(usbKeepLocal&&!why){                                                       // 이 PC 데이터 유지를 선택한 경우: 기존 저장본을 보존한 뒤 덮어씀
+        const bdk=await usbDir.getDirectoryHandle(USB_BAK_DIR,{create:true});
+        await usbWriteFile(bdk,"gantt_data_덮어쓰기전_"+usbStamp()+".json",oldTxt);
+        usbKeepLocal=false;
+      }
+      if(why||newer){
+        if(!manual){usbHoldWhy=why||"USB 저장본이 다른 PC에서 저장됨";usbUI();return false;}
+        if(!confirm("⚠ USB 저장본 확인\n\n"+(why?"USB 저장본보다 데이터가 크게 적습니다. ("+why+")":"USB 저장본이 다른 PC에서 저장됐거나 이 PC보다 최신입니다.")
+          +"\n\n· USB 저장본: "+statsTxt(oS)+"\n· 이 PC: "+statsTxt(lS)
+          +"\n\n[확인] 이 PC 데이터로 USB를 덮어쓰기 (기존 저장본은 백업 폴더에 보존)\n[취소] 저장하지 않음"))return false;
+        const bd0=await usbDir.getDirectoryHandle(USB_BAK_DIR,{create:true});
+        await usbWriteFile(bd0,"gantt_data_덮어쓰기전_"+usbStamp()+".json",oldTxt);
+      }
+    }
+    const rev=Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+    const outObj=JSON.parse(JSON.stringify(state));outObj._usbRev=rev;
+    const txt=JSON.stringify(outObj,null,1);
+    await usbWriteFile(usbDir,USB_FILE,txt);
+    usbSetRev(rev);
+    try{                                         // 날짜별 백업 + 오래된 백업 정리(실패해도 본 저장에는 영향 없음)
+      const bd=await usbDir.getDirectoryHandle(USB_BAK_DIR,{create:true});
+      await usbWriteFile(bd,"gantt_data_"+iso(today0())+".json",txt);
+      const limit=iso(addDays(today0(),-USB_KEEP_DAYS)),dead=[];
+      for await(const ent of bd.entries()){const m=/^gantt_data_(\d{4}-\d{2}-\d{2})\.json$/.exec(ent[0]);if(m&&m[1]<limit)dead.push(ent[0]);}
+      for(const n of dead){try{await bd.removeEntry(n);}catch(_){}}
+    }catch(_){}
+    usbHoldWhy="";usbLastSaved=Date.now();
+    if(usbSeq===seq0)usbDirty=false;
+    usbUI();return true;
+  }catch(e){
+    usbBroken=true;usbState="need";usbUI();
+    if(manual)alert("USB 저장 실패: "+((e&&e.message)||e)+"\n\nUSB가 꽂혀 있는지 확인한 뒤 「💾 저장하기」를 다시 눌러 폴더를 선택하세요.");
+    return false;
+  }finally{usbBusy=false;if(usbDirty&&usbSeq!==seq0)usbQueue();}
+}
+function usbQueue(){
+  clearTimeout(usbTimer);
+  usbTimer=setTimeout(()=>{if(usbDirty&&usbDir&&usbState==="ready"&&!usbBroken)usbSave(false);},3000);
+}
+function usbMark(){usbSeq++;usbDirty=true;usbUI();usbQueue();}
+/* 저장 함수에 USB 저장 표시만 덧붙임(기존 동작은 그대로) */
+const _saveOrig=save,_saveBoardOrig=saveBoard;
+save=function(){_saveOrig();usbMark();undoCommit(true);};
+saveBoard=function(){_saveBoardOrig();usbMark();undoCommit(true);};
+async function usbSaveClick(){
+  const ok=await usbSave(true);
+  if(ok){const b=document.getElementById("exportBtn");if(b){b.classList.remove("fr-flash");void b.offsetWidth;b.classList.add("fr-flash");}}
+}
+/* 창을 열었을 때·폴더를 연결했을 때: USB 저장본이 다른 PC에서 저장됐거나 더 최신/더 많으면 불러올지 확인 */
+async function usbCheckNewer(){
+  if(!usbDir)return;
+  let ok=true;try{for await(const _k of usbDir.keys())break;}catch(_){ok=false;}
+  if(!ok){usbBroken=true;usbState="need";usbUI();return;}       // USB가 빠져 있음 → 아무것도 하지 않음
+  usbChecked=true;
+  try{
+    const txt=await usbReadFile(usbDir,USB_FILE);if(!txt)return;
+    const d=JSON.parse(txt);if(!d||!d.months)return;
+    const rev=d._usbRev||"";delete d._usbRev;
+    const uS=dataStats(d),lS=dataStats(state);
+    const other=rev!==usbMyRev();
+    const newer=(d.updatedAt||0)>(state.updatedAt||0)+1000;
+    const why=wipeWhy(lS,uS);
+    if(!other&&!newer&&!why)return;
+    if(lS.total>0&&uS.tasks===lS.tasks&&uS.cards===lS.cards&&uS.rec===lS.rec&&(d.updatedAt||0)===(state.updatedAt||0)){usbSetRev(rev);return;}   // 내용이 같으면 묻지 않음
+    if(lS.total>0&&!confirm("💾 USB 저장본 불러오기\n\n"+(why?"USB 저장본에 데이터가 더 많습니다. ("+why+")":other?"USB에 다른 PC에서 저장한 데이터가 있습니다.":"USB 저장본이 이 PC보다 최신입니다.")
+      +"\n\n· USB 저장본: "+statsTxt(uS)+" (저장 "+usbTime(d.updatedAt)+")\n· 이 PC: "+statsTxt(lS)
+      +"\n\n[확인] USB 저장본 불러오기 (권장)\n[취소] 이 PC 데이터 유지 — 다음 저장 때 USB를 이 PC 데이터로 덮어씁니다(기존 저장본은 백업 폴더에 보존)")){
+      usbKeepLocal=true;return;
+    }
+    if(lS.total>0){                                               // 교체 전 이 PC 데이터를 USB 백업 폴더에 보존
+      try{const bd=await usbDir.getDirectoryHandle(USB_BAK_DIR,{create:true});
+        await usbWriteFile(bd,"gantt_data_이PC_불러오기전_"+usbStamp()+".json",JSON.stringify(state,null,1));}catch(_){}
+    }
+    if(!d.recurring)d.recurring=[];
+    state=bindWorkspaces(d);usbSetRev(rev);
+    undoMute=true;try{_saveOrig();}finally{undoMute=false;}       // 불러오기는 되돌리기 기록에서 제외
+    undoStack=[];undoCommit(false);
+    usbLastSaved=Date.now();usbDirty=false;usbHoldWhy="";
+    render();applyFold();usbUI();
+  }catch(_){}
+}
+function usbArm(){             // 폴더 재승인은 클릭 제스처가 필요 → 첫 클릭 때 한 번 요청
+  const h=async function(){
+    document.removeEventListener("pointerdown",h,true);
+    if(usbState==="need"&&await usbEnsure(true))usbCheckNewer();
+  };
+  document.addEventListener("pointerdown",h,true);
+}
+async function usbInit(){
+  if(!usbSupported()){usbState="unsupported";usbUI();return;}
+  try{
+    const h=await idbGet("dataDir");
+    if(h){usbDir=h;const p=await h.queryPermission({mode:"readwrite"});usbState=(p==="granted")?"ready":"need";}
+  }catch(_){usbState="none";}
+  usbUI();
+  if(usbState==="ready")usbCheckNewer();
+  else if(usbState==="need")usbArm();
+}
+document.getElementById("exportBtn").onclick=usbSaveClick;
+/* 저장하지 않고 창을 닫을 때 경고(브라우저 기본 확인창) → 머무르면 저장 여부 확인 */
+window.addEventListener("beforeunload",e=>{
+  if(!usbSupported()||!usbDirty)return;
+  e.preventDefault();e.returnValue="";
+  setTimeout(()=>{
+    if(!usbDirty)return;
+    if(!confirm("USB에 저장하지 않은 변경 내용이 있습니다.\n지금 저장할까요?"))return;
+    usbSave(true).then(ok=>{
+      if(ok)alert("저장 완료 — 이제 창을 닫아도 됩니다.");
+      else alert("저장하지 못했습니다. 「💾 저장하기」 버튼을 눌러 저장한 뒤 닫아 주세요.");
+    });
+  },400);
+});
+
+/* ==================== 창 밖 드래그로 모달이 닫히는 문제 방지 (추가) ====================
+   입력란에서 글자를 드래그하다 모달 바깥에서 마우스를 떼면 '바깥 클릭'으로 처리돼 닫히던 문제.
+   → 누르기 시작한 곳도 바깥(어두운 배경)일 때만 닫히도록 함 */
+let maskDownEl=null;
+document.addEventListener("pointerdown",e=>{maskDownEl=e.target;},true);
+document.addEventListener("click",e=>{
+  const t=e.target;
+  if(t&&t.classList&&(t.classList.contains("mask")||t.classList.contains("img-lens"))&&maskDownEl!==t)e.stopPropagation();
+},true);
+
+/* ==================== Ctrl+Z 되돌리기 (추가) ====================
+   - 직전 작업(삭제·수정·추가·이동·완료 처리 등)을 항목 단위로 되돌림 (최대 30단계)
+   - 글자 입력 중(입력란에 커서가 있을 때)에는 브라우저 기본 '입력 취소'가 그대로 동작
+   - 휴대폰 캘린더·클라우드에서 들어온 변경은 되돌리기 대상이 아님(건드리지 않음) */
+const UNDO_MAX=30;
+let undoBase=new Map(), undoStack=[], undoMute=false;
+function undoSnap(){
+  const m=new Map(),W=state.__ws;if(!W)return m;
+  ["work","personal","ad"].forEach(ws=>{
+    const w=W[ws];if(!w)return;
+    for(const k in (w.months||{})){((w.months[k]&&w.months[k].tasks)||[]).forEach(t=>{if(t&&t.id)m.set(ws+"|t|"+t.id,{ws,kind:"t",k,id:t.id,json:JSON.stringify(t)});});}
+    ((w.board&&w.board.cards)||[]).forEach(c=>{if(c&&c.id)m.set(ws+"|c|"+c.id,{ws,kind:"c",id:c.id,json:JSON.stringify(c)});});
+    (w.recurring||[]).forEach(r=>{if(r&&r.id)m.set(ws+"|r|"+r.id,{ws,kind:"r",id:r.id,json:JSON.stringify(r)});});
+  });
+  return m;
+}
+/* record=true: 사용자 작업 → 직전 상태와 비교해 되돌리기 기록 / false: 외부 반영(동기화) → 기준만 갱신 */
+function undoCommit(record){
+  let now;try{now=undoSnap();}catch(e){return;}
+  if(record&&!undoMute){
+    const removed=[],changed=[],added=[];
+    undoBase.forEach((v,key)=>{const n=now.get(key);if(!n)removed.push(v);else if(n.json!==v.json)changed.push(v);});
+    now.forEach((v,key)=>{if(!undoBase.has(key))added.push({ws:v.ws,kind:v.kind,id:v.id});});
+    if(removed.length||changed.length||added.length){
+      undoStack.push({removed,changed,added});
+      if(undoStack.length>UNDO_MAX)undoStack.shift();
+    }
+  }
+  undoBase=now;
+}
+function undoList(ws,kind,k,create){
+  const w=state.__ws[ws];if(!w)return null;
+  if(kind==="c"){if(!w.board||typeof w.board!=="object")w.board={cards:[]};if(!Array.isArray(w.board.cards))w.board.cards=[];return w.board.cards;}
+  if(kind==="r"){if(!Array.isArray(w.recurring))w.recurring=[];return w.recurring;}
+  if(!w.months[k]){if(!create)return null;w.months[k]={tasks:[],_mig:true};}
+  if(!Array.isArray(w.months[k].tasks))w.months[k].tasks=[];
+  return w.months[k].tasks;
+}
+function undoFind(ws,kind,id){
+  const w=state.__ws[ws];if(!w)return null;
+  if(kind==="t"){for(const k in (w.months||{})){const arr=(w.months[k]&&w.months[k].tasks)||[];const i=arr.findIndex(x=>x.id===id);if(i>=0)return {arr,i};}return null;}
+  const arr=undoList(ws,kind);const i=arr?arr.findIndex(x=>x.id===id):-1;
+  return i>=0?{arr,i}:null;
+}
+function undoToast(msg){
+  let el=document.getElementById("undoToast");
+  if(!el){el=document.createElement("div");el.id="undoToast";
+    el.style.cssText="position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:90;background:var(--ink);color:#fff;font-size:13px;font-weight:700;padding:10px 16px;border-radius:12px;box-shadow:var(--shadow);max-width:80vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;transition:opacity .25s";
+    document.body.appendChild(el);}
+  el.textContent=msg;el.style.opacity="1";
+  clearTimeout(undoToast._t);undoToast._t=setTimeout(()=>{el.style.opacity="0";},2600);
+}
+function undoDo(){
+  const e=undoStack.pop();
+  if(!e){undoToast("되돌릴 작업이 없습니다");return false;}
+  const nowTs=Date.now();let label="";
+  /* 1) 추가됐던 항목 제거 */
+  e.added.forEach(a=>{
+    const f=undoFind(a.ws,a.kind,a.id);if(!f)return;
+    const cur=f.arr[f.i];
+    if(a.kind==="t"&&cur.gcalId&&typeof queueGcalDelete==="function")queueGcalDelete(cur.gcalId);
+    f.arr.splice(f.i,1);
+  });
+  /* 2) 수정됐던 항목을 이전 내용으로 */
+  e.changed.forEach(c=>{
+    const f=undoFind(c.ws,c.kind,c.id);if(!f)return;
+    const cur=f.arr[f.i],prev=JSON.parse(c.json);
+    if(c.kind==="t"){
+      if(cur.gcalId){prev.gcalId=cur.gcalId;prev.gcalUpdated=cur.gcalUpdated;}
+      prev.updatedAt=nowTs;                         // 휴대폰 캘린더에도 이전 내용이 다시 반영되도록
+      if(c.k&&f.arr!==undoList(c.ws,"t",c.k,true)){f.arr.splice(f.i,1);undoList(c.ws,"t",c.k,true).push(prev);}
+      else f.arr[f.i]=prev;
+    }else f.arr[f.i]=prev;
+    if(!label)label=prev.name||prev.title||"";
+  });
+  /* 3) 삭제됐던 항목 복구 */
+  e.removed.forEach(r=>{
+    if(undoFind(r.ws,r.kind,r.id))return;            // 이미 있으면 중복 방지
+    const obj=JSON.parse(r.json);
+    if(r.kind==="t"){delete obj.gcalId;delete obj.gcalUpdated;obj.updatedAt=nowTs;}   // 캘린더에는 새 일정으로 다시 등록
+    const arr=undoList(r.ws,r.kind,r.k,true);if(arr)arr.push(obj);
+    label=obj.name||obj.title||label;
+  });
+  undoMute=true;
+  try{save();}finally{undoMute=false;}
+  render();
+  try{if(recMask.classList.contains("show"))renderRecList();}catch(_){}
+  const n=e.removed.length+e.changed.length+e.added.length;
+  undoToast("↩ 되돌렸습니다"+(n===1&&label?" — "+label:" ("+n+"건)")+(undoStack.length?" · Ctrl+Z로 계속":""));
+  return true;
+}
+document.addEventListener("keydown",e=>{
+  if(!(e.ctrlKey||e.metaKey)||e.shiftKey||e.altKey)return;
+  if(e.key!=="z"&&e.key!=="Z"&&e.code!=="KeyZ")return;
+  const a=document.activeElement,tag=a&&a.tagName;
+  if(tag==="INPUT"||tag==="TEXTAREA"||(a&&a.isContentEditable))return;       // 글자 입력 취소는 브라우저 기본 동작
+  if(document.querySelector(".mask.show,.img-lens.show"))return;             // 창이 열려 있을 때는 동작하지 않음
+  e.preventDefault();
+  undoDo();
+});
+/* 동기화로 들어온 변경은 기록하지 않고 기준만 갱신 */
+const _saveLocalOnlyOrig=saveLocalOnly;
+saveLocalOnly=function(){_saveLocalOnlyOrig();undoCommit(false);};
+
+/* ==================== 완료 목록 접기/펼치기 (추가) — 평소에는 접힌 상태 ==================== */
+function applyDoneFold(){
+  const sec=document.querySelector(".done-sec");if(!sec)return;
+  sec.classList.toggle("collapsed",foldState.doneList!==false);     // 저장된 값이 없으면 접힘
+}
+document.getElementById("doneHead").addEventListener("click",()=>{
+  foldState.doneList=(foldState.doneList===false);                   // 펼침(false) ↔ 접힘(true)
+  saveFold();applyDoneFold();
+});
+const _applyFoldOrig=applyFold;
+applyFold=function(){_applyFoldOrig();applyDoneFold();};
+
+render();applyView();applyFold();undoCommit(false);initSync();initGcal();restoreImgFolder();usbInit();
 </script>
 </body>
 </html>
