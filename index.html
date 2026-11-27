@@ -400,7 +400,8 @@
     box-shadow:0 12px 30px -8px rgba(0,0,0,.4);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   #cardMask textarea{width:100%;border:1px solid var(--line-strong);border-radius:11px;padding:11px 13px;font-size:14px;
-    font-family:inherit;background:#fff;color:var(--ink);min-height:150px;resize:vertical;line-height:1.55}
+    font-family:inherit;background:#fff;color:var(--ink);min-height:max(340px,46vh);resize:vertical;line-height:1.55}
+  #cardMask .modal{max-width:560px}
   #cardMask textarea:focus{outline:none;border-color:var(--accent)}
   .cseg{display:flex;gap:6px;flex-wrap:wrap}
   .cseg .pbtn{flex:1;min-width:66px;padding:9px 4px}
@@ -776,7 +777,7 @@ create policy "anon_all" on schedule_sync
       <label>제목</label>
       <input type="text" id="cName" placeholder="예: 홍길동 / 스타리아 / 남양점" autocomplete="off">
     </div>
-    <div class="fld">
+    <div class="fld" style="display:none">
       <label>중요도</label>
       <div class="pseg" id="cPrioSeg">
         <button class="pbtn" data-p="high"><span class="pdot" style="background:#e11d1d"></span>높음</button>
@@ -790,7 +791,7 @@ create policy "anon_all" on schedule_sync
         <button class="pbtn pin-toggle" id="cPin" type="button">📌 최상단 고정</button>
       </div>
     </div>
-    <div class="fld">
+    <div class="fld" style="display:none">
       <label>폴더</label>
       <div class="cseg" id="cFolderSeg">
         <button class="pbtn" data-f="req">📦 재고요청</button>
@@ -2231,7 +2232,7 @@ function saveBoard(){                  // 로컬 저장 + 클라우드 동기화
   scheduleCloudPush();
 }
 function cardHTML(c){
-  const col=PRIO[c.prio]||PRIO.normal;
+  const col=PRIO.normal;               // 카드 중요도 기능 제거 → 모든 카드 동일 색
   const memo=c.memo?`<div class="card-memo">${escapeHtml(c.memo)}</div>`:"";
   return `<div class="card${c.pinned?' pinned':''}" data-id="${c.id}" style="--pc:${col}">
     ${ordHandle()}
@@ -2245,7 +2246,7 @@ function renderBoard(){
   ensureBoard();
   FOLDERS.forEach(f=>{
     const cards=sortManual(state.board.cards.filter(c=>c.folder===f.key)
-      .sort((a,b)=>((b.pinned?1:0)-(a.pinned?1:0))||(BORD[a.prio]??1)-(BORD[b.prio]??1)||(b.updatedAt||0)-(a.updatedAt||0)),c=>c,c=>!!c.pinned);
+      .sort((a,b)=>((b.pinned?1:0)-(a.pinned?1:0))||(b.updatedAt||0)-(a.updatedAt||0)),c=>c,c=>!!c.pinned);
     const cnt=document.querySelector('[data-cnt="'+f.key+'"]');if(cnt)cnt.textContent=cards.length;
     const list=document.querySelector('[data-list="'+f.key+'"]');if(!list)return;
     list.innerHTML=cards.length?cards.map(cardHTML).join("")
@@ -2269,7 +2270,7 @@ const cardMask=document.getElementById("cardMask");
 let cardEditing=null,cardPrio="normal",cardFolder="req",cardPin=false;
 function selCpin(){const b=document.getElementById("cPin");if(b)b.classList.toggle("sel",!!cardPin);}
 function selCseg(seg,attr,val){document.querySelectorAll("#"+seg+" .pbtn").forEach(x=>x.classList.toggle("sel",x.dataset[attr]===val));}
-const CARD_MEMO_TPL="[ 발주 ]\n인수자 : \n연락처 : \n탁송지 : \n썬팅농도 : \n블박장착여부 : \n\n보험가입증명서\n인도일자\n용품오더\n취득원가 : ";   // 새 카드 메모 기본 양식
+const CARD_MEMO_TPL="[ 발주 ]\n계약자 : \n인수자 : \n연락처 : \n탁송지 : \n\n보험가입증명서(리스) : \n인도일자 : \n\n계약번호 : \n취득원가 : \n\n용품오더 : \n블박장착여부 : \n썬팅농도 : ";   // 새 카드 메모 기본 양식
 function openCardAdd(folder){
   cardEditing=null;cardPrio="normal";cardFolder=folder||"req";cardPin=false;
   imgUnbind();document.getElementById("cImgSec").style.display="none";
